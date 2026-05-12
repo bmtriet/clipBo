@@ -16,7 +16,7 @@ source venv/bin/activate
 # Upgrade pip and install dependencies
 echo "Checking and installing dependencies..."
 pip install --quiet --upgrade pip
-pip install --quiet python-dotenv pynput pyperclip google-genai openai
+pip install --quiet python-dotenv pynput pyperclip google-genai openai Pillow cairosvg
 
 # Run the application
 echo "Starting the application..."

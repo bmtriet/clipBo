@@ -23,6 +23,14 @@ HOTKEY_TRANS_VI = os.getenv("HOTKEY_TRANS_VI", "<ctrl>+<f5>")
 HOTKEY_QA = os.getenv("HOTKEY_QA", "<ctrl>+<f12>")
 HOTKEY_POPUP = os.getenv("HOTKEY_POPUP", "<ctrl>+/")
 KEEP_ORIGINAL_TEXT = os.getenv("KEEP_ORIGINAL_TEXT", "false").lower() == "true"
+
+def normalize_hotkey(hk: str) -> str:
+    """Chuyển phím đặc biệt như '/' thành dạng chr() mà pynput X11 nhận được khi giữ Ctrl."""
+    import re
+    # Thay thế +/ ở cuối bằng +chr(47) để X11 nhận đúng khi Ctrl đang được giữ
+    return re.sub(r'\+/$', f'+{chr(47)}', hk)
+
+HOTKEY_POPUP = normalize_hotkey(HOTKEY_POPUP)
 SHOW_QUESTION_IN_QA = os.getenv("SHOW_QUESTION_IN_QA", "false").lower() == "true"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
@@ -98,10 +106,24 @@ def run_learning_mode():
         
     print(f"Hoàn tất! Đã cập nhật {count} mẫu mới từ người dùng vào {LEARNED_FILE}.\n")
 
-def build_prompt(text, action_type="add_marks"):
+def load_brain_context():
+    brain_path = os.path.join(os.path.dirname(__file__), "brain.md")
+    if os.path.exists(brain_path):
+        with open(brain_path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            # Bỏ qua phần hướng dẫn mặc định của hệ thống
+            if "[Nhập thông tin ngữ cảnh của bạn vào bên dưới dòng này]" in content:
+                content = content.split("[Nhập thông tin ngữ cảnh của bạn vào bên dưới dòng này]")[-1].strip()
+            if content:
+                return f"\n[AI BRAIN CONTEXT]\n{content}\n[END CONTEXT]\n\n"
+    return ""
+
+def build_prompt(text, action_type="add_marks", custom_prompt="", custom_lang="Auto"):
+    brain_ctx = load_brain_context()
+    
     if action_type == "add_marks":
         learned = load_learned()
-        prompt = "Bạn là một chuyên gia ngôn ngữ tiếng Việt. Hãy thêm dấu chuẩn xác nhất cho đoạn văn bản không dấu hoặc sai dấu sau. CHỈ trả về văn bản đã được thêm dấu, KHÔNG giải thích, KHÔNG thêm bất kỳ bình luận nào khác.\n"
+        prompt = f"{brain_ctx}Bạn là một chuyên gia ngôn ngữ tiếng Việt. Hãy thêm dấu chuẩn xác nhất cho đoạn văn bản không dấu hoặc sai dấu sau. CHỈ trả về văn bản đã được thêm dấu, KHÔNG giải thích, KHÔNG thêm bất kỳ bình luận nào khác.\n"
         if learned:
             prompt += "\nDưới đây là một số ví dụ do người dùng đã sửa lỗi từ những lần trước (bạn hãy học theo phong cách này hoặc tránh sai lầm tương tự):\n"
             examples = list(learned.items())[-10:]
@@ -110,15 +132,21 @@ def build_prompt(text, action_type="add_marks"):
         prompt += f"Văn bản cần xử lý:\n{text}"
         return prompt
     elif action_type == "trans_en":
-        return f"Hãy dịch đoạn văn bản sau sang tiếng Anh một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
+        return f"{brain_ctx}Hãy dịch đoạn văn bản sau sang tiếng Anh một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
     elif action_type == "trans_zhtw":
-        return f"Hãy dịch đoạn văn bản sau sang tiếng Hoa phồn thể (Traditional Chinese) một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
+        return f"{brain_ctx}Hãy dịch đoạn văn bản sau sang tiếng Hoa phồn thể (Traditional Chinese) một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
     elif action_type == "trans_khmer":
-        return f"Hãy dịch đoạn văn bản sau sang tiếng Khmer một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
+        return f"{brain_ctx}Hãy dịch đoạn văn bản sau sang tiếng Khmer một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
     elif action_type == "trans_vi":
-        return f"Hãy dịch đoạn văn bản sau sang tiếng Việt một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
+        return f"{brain_ctx}Hãy dịch đoạn văn bản sau sang tiếng Việt một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
     elif action_type == "qa":
-        return f"Bạn là một trợ lý AI thông minh. Hãy trả lời câu hỏi sau một cách ngắn gọn, rõ ràng và chuẩn xác nhất. KHÔNG lặp lại câu hỏi.\n\nCâu hỏi:\n{text}"
+        base = f"{brain_ctx}Bạn là một trợ lý AI thông minh."
+        if custom_lang != "Auto":
+            base += f"\nLUÔN LUÔN trả lời bằng ngôn ngữ: {custom_lang}."
+        if custom_prompt:
+            base += f"\n\nYêu cầu của người dùng:\n{custom_prompt}"
+        base += f"\n\nNội dung/Câu hỏi:\n{text}"
+        return base
     return ""
 
 is_processing = False
@@ -180,8 +208,73 @@ def on_activate(action_type="add_marks", pre_selected_text=None):
                 print(f"[DEBUG] [CACHE HIT] Lấy từ bộ nhớ: {result_text}")
 
         if not result_text:
+            custom_prompt = ""
+            custom_lang = "Auto"
+            
+            if action_type == "qa":
+                qa_script = """
+import tkinter as tk
+from tkinter import ttk
+import sys
+import json
+
+root = tk.Tk()
+root.title("Hỏi đáp AI")
+root.attributes('-topmost', True)
+
+root.update_idletasks()
+w = 450
+h = 120
+x = root.winfo_screenwidth()//2 - w//2
+y = root.winfo_screenheight()//2 - h//2
+root.geometry(f"{w}x{h}+{x}+{y}")
+
+tk.Label(root, text="Nhập yêu cầu cho AI (Prompt):", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(10, 5))
+entry = tk.Entry(root, font=("Arial", 11))
+entry.pack(fill="x", padx=10)
+entry.focus_force()
+
+frame = tk.Frame(root)
+frame.pack(fill="x", padx=10, pady=10)
+
+tk.Label(frame, text="Ngôn ngữ trả lời:").pack(side="left")
+lang_var = tk.StringVar(value="Auto")
+cb = ttk.Combobox(frame, textvariable=lang_var, values=["Auto", "En", "Zh", "Vi", "Kh"], state="readonly", width=8)
+cb.pack(side="left", padx=5)
+
+def submit(e=None):
+    print(json.dumps({"prompt": entry.get().strip(), "lang": lang_var.get()}), flush=True)
+    root.destroy()
+    sys.exit(0)
+def cancel(e=None):
+    root.destroy()
+    sys.exit(1)
+
+tk.Button(frame, text="Gửi (Enter)", command=submit, bg="#008298", fg="white", width=10).pack(side="right")
+tk.Button(frame, text="Hủy (ESC)", command=cancel, width=10).pack(side="right", padx=5)
+
+root.bind('<Return>', submit)
+root.bind('<Escape>', cancel)
+root.mainloop()
+"""
+                try:
+                    res = subprocess.run(["python3", "-c", qa_script], capture_output=True, text=True)
+                    if res.returncode == 0 and res.stdout.strip():
+                        import json
+                        data = json.loads(res.stdout.strip())
+                        custom_prompt = data.get("prompt", "")
+                        custom_lang = data.get("lang", "Auto")
+                    else:
+                        print("[HỦY] Người dùng đã hủy Hỏi đáp AI.")
+                        is_processing = False
+                        return
+                except Exception as e:
+                    print(f"Lỗi hiển thị cửa sổ QA: {e}")
+                    is_processing = False
+                    return
+
             try:
-                prompt = build_prompt(selected_text, action_type)
+                prompt = build_prompt(selected_text, action_type, custom_prompt, custom_lang)
                 
                 if AI_PROVIDER == "openai" and openai_client:
                     response = openai_client.chat.completions.create(
@@ -239,11 +332,8 @@ def on_activate(action_type="add_marks", pre_selected_text=None):
     except Exception as ex:
         print(f"\n[LỖI NGHIÊM TRỌNG] Đã xảy ra lỗi trong quá trình xử lý hotkey: {ex}")
     finally:
-        def release_lock():
-            time.sleep(0.5)
-            global is_processing
-            is_processing = False
-        threading.Thread(target=release_lock).start()
+        global is_processing
+        is_processing = False
 
 def on_press(key):
     if DEBUG:
@@ -287,80 +377,31 @@ def get_selected_text():
 def show_popup_menu():
     global is_processing
     if is_processing: return
-    
-    selected_text = get_selected_text()
-        
-    if not selected_text:
-        print("[LỖI] Không có văn bản nào để xử lý.")
-        return
-        
-    script = """
-import tkinter as tk
-import sys
+    is_processing = True
 
-root = tk.Tk()
-root.title("AI Assistant")
-root.attributes('-topmost', True)
-
-options = {
-    '1': "add_marks",
-    '2': "trans_en",
-    '3': "trans_zhtw",
-    '4': "trans_khmer",
-    '5': "trans_vi",
-    '6': "qa"
-}
-
-tk.Label(root, text="Chọn chức năng (Bấm phím 1-6 hoặc ESC để huỷ):", font=("Arial", 12, "bold")).pack(padx=20, pady=10)
-labels = [
-    "[1] Thêm dấu tiếng Việt",
-    "[2] Dịch sang Tiếng Anh",
-    "[3] Dịch sang Tiếng Hoa Phồn thể",
-    "[4] Dịch sang Tiếng Khmer",
-    "[5] Dịch sang Tiếng Việt",
-    "[6] Hỏi đáp AI"
-]
-for lbl in labels:
-    tk.Label(root, text=lbl, font=("Arial", 11)).pack(anchor="w", padx=20, pady=2)
-
-def on_key(event):
-    if event.keysym == 'Escape':
-        root.destroy()
-        sys.exit(0)
-    elif event.char in options:
-        print(options[event.char])
-        root.destroy()
-        sys.exit(0)
-
-root.bind('<Key>', on_key)
-root.focus_force()
-
-# Tính toán vị trí chuột & Corner-aware
-root.update_idletasks()
-w = root.winfo_width()
-h = root.winfo_height()
-x = root.winfo_pointerx()
-y = root.winfo_pointery()
-
-sw = root.winfo_screenwidth()
-sh = root.winfo_screenheight()
-
-if x + w > sw:
-    x = sw - w
-if y + h > sh:
-    y = sh - h
-
-root.geometry(f"+{x}+{y}")
-root.mainloop()
-"""
+    popup_script = os.path.join(os.path.dirname(__file__), "popup_ui.py")
     try:
-        result = subprocess.run(["python3", "-c", script], capture_output=True, text=True)
+        result = subprocess.run(
+            [sys.executable, popup_script, os.path.dirname(__file__)],
+            capture_output=True, text=True
+        )
+        if result.stderr:
+            print(f"[POPUP ERROR] {result.stderr.strip()}")
         choice = result.stdout.strip()
-        if choice:
-            time.sleep(0.1) # Chờ popup đóng hẳn và trả focus
-            threading.Thread(target=on_activate, args=(choice, selected_text)).start()
+        if not choice:
+            is_processing = False
+            return
+        # Lấy text SAU khi user chọn action (primary selection vẫn còn nguyên)
+        selected_text = get_selected_text()
+        if not selected_text:
+            print("[LỖI] Không có văn bản được chọn hoặc trong clipboard.")
+            is_processing = False
+            return
+        is_processing = False
+        threading.Thread(target=on_activate, args=(choice, selected_text)).start()
     except Exception as e:
-        print(f"Lỗi hiển thị popup tkinter: {e}")
+        print(f"Lỗi popup: {e}")
+        is_processing = False
 
 def activate_popup(): threading.Thread(target=show_popup_menu).start()
 def start_background_listener():
