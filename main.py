@@ -22,6 +22,7 @@ HOTKEY_TRANS_KHMER = os.getenv("HOTKEY_TRANS_KHMER", "<ctrl>+<shift>+$")
 HOTKEY_TRANS_VI = os.getenv("HOTKEY_TRANS_VI", "<ctrl>+<f5>")
 HOTKEY_QA = os.getenv("HOTKEY_QA", "<ctrl>+<f12>")
 HOTKEY_POPUP = os.getenv("HOTKEY_POPUP", "<ctrl>+/")
+UI_LANGUAGE = os.getenv("UI_LANGUAGE", "en").lower()
 KEEP_ORIGINAL_TEXT = os.getenv("KEEP_ORIGINAL_TEXT", "false").lower() == "true"
 
 def normalize_hotkey(hk: str) -> str:
@@ -118,7 +119,7 @@ def load_brain_context():
                 return f"\n[AI BRAIN CONTEXT]\n{content}\n[END CONTEXT]\n\n"
     return ""
 
-def build_prompt(text, action_type="add_marks", custom_prompt="", custom_lang="Auto"):
+def build_prompt(text, action_type="add_marks", custom_prompt="", custom_lang="Auto", custom_length="medium"):
     brain_ctx = load_brain_context()
     
     if action_type == "add_marks":
@@ -141,6 +142,11 @@ def build_prompt(text, action_type="add_marks", custom_prompt="", custom_lang="A
         return f"{brain_ctx}Hãy dịch đoạn văn bản sau sang tiếng Việt một cách tự nhiên nhất. CHỈ trả về văn bản đã dịch, KHÔNG giải thích, KHÔNG bình luận.\n\nVăn bản gốc:\n{text}"
     elif action_type == "qa":
         base = f"{brain_ctx}Bạn là một trợ lý AI thông minh."
+        if custom_length == "short":
+            base += " Hãy trả lời một cách thật ngắn gọn, súc tích và trực tiếp vào vấn đề."
+        elif custom_length == "detailed":
+            base += " Hãy trả lời một cách thật chi tiết, cặn kẽ và giải thích rõ ràng."
+        
         if custom_lang != "Auto":
             base += f"\nLUÔN LUÔN trả lời bằng ngôn ngữ: {custom_lang}."
         if custom_prompt:
@@ -149,9 +155,27 @@ def build_prompt(text, action_type="add_marks", custom_prompt="", custom_lang="A
         return base
     return ""
 
+def get_current_active_window():
+    try:
+        res = subprocess.run(["xdotool", "getactivewindow"], capture_output=True, text=True, timeout=0.5)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+def restore_focus(window_id):
+    if not window_id:
+        return
+    try:
+        subprocess.run(["xdotool", "windowactivate", window_id], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.15)
+    except Exception:
+        pass
+
 is_processing = False
 
-def on_activate(action_type="add_marks", pre_selected_text=None):
+def on_activate(action_type="add_marks", pre_selected_text=None, target_window_id=None):
     global is_processing
     if is_processing:
         return
@@ -210,16 +234,20 @@ def on_activate(action_type="add_marks", pre_selected_text=None):
         if not result_text:
             custom_prompt = ""
             custom_lang = "Auto"
+            custom_length = "medium"
+            custom_append = False
             
             if action_type == "qa":
                 try:
                     webview_script = os.path.join(os.path.dirname(__file__), "webview_host.py")
-                    res = subprocess.run(["python3", webview_script, "qa"], capture_output=True, text=True)
+                    res = subprocess.run(["python3", webview_script, "qa", UI_LANGUAGE], capture_output=True, text=True)
                     if res.returncode == 0 and res.stdout.strip():
                         import json
                         data = json.loads(res.stdout.strip())
                         custom_prompt = data.get("prompt", "")
                         custom_lang = data.get("lang", "Auto")
+                        custom_length = data.get("length", "medium")
+                        custom_append = data.get("append_question", False)
                     else:
                         print("[HỦY] Người dùng đã hủy Hỏi đáp AI.")
                         is_processing = False
@@ -230,7 +258,7 @@ def on_activate(action_type="add_marks", pre_selected_text=None):
                     return
 
             try:
-                prompt = build_prompt(selected_text, action_type, custom_prompt, custom_lang)
+                prompt = build_prompt(selected_text, action_type, custom_prompt, custom_lang, custom_length)
                 
                 if AI_PROVIDER == "openai" and openai_client:
                     response = openai_client.chat.completions.create(
@@ -261,11 +289,15 @@ def on_activate(action_type="add_marks", pre_selected_text=None):
                 
         # Giữ lại bản gốc
         if action_type == "qa":
-            if SHOW_QUESTION_IN_QA:
-                result_text = f"{selected_text}\n---\n{result_text}"
+            if SHOW_QUESTION_IN_QA or custom_append:
+                question_text = custom_prompt if custom_prompt else selected_text
+                result_text = f"Hỏi:\n{question_text}\n\nĐáp:\n{result_text}"
         elif KEEP_ORIGINAL_TEXT and action_type != "add_marks":
             result_text = f"{selected_text}\n---\n{result_text}"
             
+        if target_window_id:
+            restore_focus(target_window_id)
+
         pyperclip.copy(result_text)
         
         time.sleep(0.1)
@@ -294,12 +326,12 @@ def on_press(key):
     if DEBUG:
         print(f"[DEBUG] Bấm phím: {key}")
 
-def activate_add_marks(): on_activate("add_marks")
-def activate_trans_en(): on_activate("trans_en")
-def activate_trans_zhtw(): on_activate("trans_zhtw")
-def activate_trans_khmer(): on_activate("trans_khmer")
-def activate_trans_vi(): on_activate("trans_vi")
-def activate_qa(): on_activate("qa")
+def activate_add_marks(): on_activate("add_marks", target_window_id=get_current_active_window())
+def activate_trans_en(): on_activate("trans_en", target_window_id=get_current_active_window())
+def activate_trans_zhtw(): on_activate("trans_zhtw", target_window_id=get_current_active_window())
+def activate_trans_khmer(): on_activate("trans_khmer", target_window_id=get_current_active_window())
+def activate_trans_vi(): on_activate("trans_vi", target_window_id=get_current_active_window())
+def activate_qa(): on_activate("qa", target_window_id=get_current_active_window())
 
 def get_selected_text():
     # 1. Thử lấy từ Primary Selection (Linux) trước (không can thiệp clipboard)
@@ -334,10 +366,12 @@ def show_popup_menu():
     if is_processing: return
     is_processing = True
 
+    target_window_id = get_current_active_window()
+
     popup_script = os.path.join(os.path.dirname(__file__), "webview_host.py")
     try:
         result = subprocess.run(
-            [sys.executable, popup_script, "popup"],
+            [sys.executable, popup_script, "popup", UI_LANGUAGE],
             capture_output=True, text=True
         )
         if result.stderr:
@@ -353,7 +387,7 @@ def show_popup_menu():
             is_processing = False
             return
         is_processing = False
-        threading.Thread(target=on_activate, args=(choice, selected_text)).start()
+        threading.Thread(target=on_activate, args=(choice, selected_text, target_window_id)).start()
     except Exception as e:
         print(f"Lỗi popup: {e}")
         is_processing = False
@@ -416,7 +450,7 @@ def capture_hotkey():
     return result[0] if result else None
 
 def config_menu():
-    global GEMINI_API_KEY, GEMINI_MODEL, client, HOTKEY, HOTKEY_TRANS_EN, HOTKEY_TRANS_ZHTW, HOTKEY_TRANS_KHMER, HOTKEY_TRANS_VI, HOTKEY_QA, HOTKEY_POPUP, KEEP_ORIGINAL_TEXT, SHOW_QUESTION_IN_QA
+    global GEMINI_API_KEY, GEMINI_MODEL, client, HOTKEY, HOTKEY_TRANS_EN, HOTKEY_TRANS_ZHTW, HOTKEY_TRANS_KHMER, HOTKEY_TRANS_VI, HOTKEY_QA, HOTKEY_POPUP, KEEP_ORIGINAL_TEXT, SHOW_QUESTION_IN_QA, UI_LANGUAGE
     global AI_PROVIDER, OPENAI_API_KEY, OPENAI_MODEL, openai_client
     os.system('clear' if os.name == 'posix' else 'cls')
     print("\n" + "="*50)
@@ -434,12 +468,13 @@ def config_menu():
     print(f"8. Phím tắt Dịch Việt : {HOTKEY_TRANS_VI}")
     print(f"9. Phím tắt Hỏi đáp AI: {HOTKEY_QA}")
     print(f"10. Phím tắt Menu Popup: {HOTKEY_POPUP}")
-    print(f"11. Giữ câu hỏi khi Hỏi đáp: {'BẬT' if SHOW_QUESTION_IN_QA else 'TẮT'}")
-    print(f"12. Giữ bản gốc khi dịch: {'BẬT' if KEEP_ORIGINAL_TEXT else 'TẮT'}")
-    print("13. Quay lại")
+    print(f"11. Ngôn ngữ Giao diện (UI) : {'Tiếng Việt' if UI_LANGUAGE == 'vi' else 'English'}")
+    print(f"12. Giữ câu hỏi khi Hỏi đáp: {'BẬT' if SHOW_QUESTION_IN_QA else 'TẮT'}")
+    print(f"13. Giữ bản gốc khi dịch: {'BẬT' if KEEP_ORIGINAL_TEXT else 'TẮT'}")
+    print("14. Quay lại")
     
     try:
-        c = input("\nChọn chức năng (1-13): ").strip()
+        c = input("\nChọn chức năng (1-14): ").strip()
     except (KeyboardInterrupt, EOFError):
         return
         
@@ -499,11 +534,16 @@ def config_menu():
             print("LƯU Ý: Vui lòng thoát ứng dụng và mở lại để áp dụng phím tắt mới!")
             
     elif c == '11':
+        UI_LANGUAGE = "vi" if UI_LANGUAGE == "en" else "en"
+        set_key(env_file, "UI_LANGUAGE", UI_LANGUAGE)
+        print(f"Đã chuyển Ngôn ngữ Giao diện sang: {'Tiếng Việt' if UI_LANGUAGE == 'vi' else 'English'}")
+
+    elif c == '12':
         SHOW_QUESTION_IN_QA = not SHOW_QUESTION_IN_QA
         set_key(env_file, "SHOW_QUESTION_IN_QA", "true" if SHOW_QUESTION_IN_QA else "false")
         print(f"Đã cập nhật tính năng giữ câu hỏi thành: {'BẬT' if SHOW_QUESTION_IN_QA else 'TẮT'}")
         
-    elif c == '12':
+    elif c == '13':
         KEEP_ORIGINAL_TEXT = not KEEP_ORIGINAL_TEXT
         set_key(env_file, "KEEP_ORIGINAL_TEXT", "true" if KEEP_ORIGINAL_TEXT else "false")
         print(f"Đã cập nhật tính năng giữ bản gốc thành: {'BẬT' if KEEP_ORIGINAL_TEXT else 'TẮT'}")
