@@ -58,7 +58,7 @@ def main():
     root.withdraw()  # Ẩn trước để setup xong mới show
 
     # Không dùng overrideredirect để tránh mất focus trên GNOME
-    root.title("AI Assistant")
+    root.title("KoDauKoVui")
     root.attributes("-topmost", True)
     root.resizable(False, False)
 

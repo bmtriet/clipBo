@@ -2,7 +2,7 @@ import tkinter as tk
 import sys
 
 root = tk.Tk()
-root.title("AI Assistant")
+root.title("KoDauKoVui")
 root.overrideredirect(True)
 root.attributes('-topmost', True)
 root.configure(bg="#cccccc") # Viền mỏng 1px
