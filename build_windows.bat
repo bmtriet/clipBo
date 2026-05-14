@@ -6,9 +6,26 @@ cd /d "%~dp0"
 set "BUILD_VENV=.build-venv"
 set "DIST_DIR=dist\KoDauKoVui"
 set "ARCHIVE=dist\KoDauKoVui-windows-x64.zip"
+set "PYTHON_LAUNCHER="
+
+for %%V in (3.13 3.12 3.11 3.10) do (
+  py -%%V -c "import sys; print(sys.version)" >nul 2>nul
+  if not errorlevel 1 (
+    set "PYTHON_LAUNCHER=py -%%V"
+    goto :python_found
+  )
+)
+
+echo [ERROR] No supported Windows Python found.
+echo [ERROR] Install Python 3.10, 3.11, 3.12, or 3.13.
+echo [ERROR] Python 3.14 is not supported by pythonnet, which pywebview uses on Windows.
+exit /b 1
+
+:python_found
+echo Using Windows build interpreter: %PYTHON_LAUNCHER%
 
 if not exist "%BUILD_VENV%\Scripts\python.exe" (
-  py -3 -m venv "%BUILD_VENV%"
+  %PYTHON_LAUNCHER% -m venv "%BUILD_VENV%"
   if errorlevel 1 exit /b 1
 )
 

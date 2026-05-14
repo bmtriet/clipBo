@@ -11,11 +11,12 @@
 - **Chèn trực tiếp (Auto-Paste)**: Tự động copy đoạn văn bôi đen, xử lý, và dán trả lại vào vị trí cũ.
 
 ## Yêu cầu hệ thống
-- Python 3.10 trở lên
+- Python 3.10-3.13
 - Node.js & npm (để phát triển/build UI React)
 - Môi trường Linux (với X11) hoặc Windows
 - Trên Linux yêu cầu `xclip`; nếu muốn khôi phục focus/popup theo vị trí chuột thì cần `xdotool`
 - Trên Windows, `pywebview` có thể cần browser runtime phù hợp trên một số máy
+- Trên Windows, hiện nên tránh Python 3.14 vì `pywebview` kéo `pythonnet`, và `pythonnet` hiện hỗ trợ `Python < 3.14`
 - Trên Linux, repo dùng backend Qt cho `pywebview` khi build/package; build script sẽ cài thêm dependency từ `requirements-linux.txt`
 
 ## Packaging đa nền tảng

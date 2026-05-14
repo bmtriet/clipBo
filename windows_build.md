@@ -11,7 +11,7 @@ Tài liệu này bám theo repo hiện tại:
 
 Cài sẵn trên máy Windows:
 
-- Python 3.10+ với `py` launcher
+- Python 3.10-3.13 với `py` launcher
 - Node.js 20+ và `npm`
 - Microsoft Edge WebView2 Runtime
 
@@ -23,6 +23,8 @@ node --version
 npm --version
 ```
 
+Quan trọng: hiện tại **không dùng Python 3.14** cho flow Windows này. `pywebview` kéo `pythonnet` trên Windows, và `pythonnet` hiện hỗ trợ `Python < 3.14`.
+
 Nếu `npm` chưa có, cài Node.js trước rồi mới build UI.
 
 ## 2. Chuẩn bị source
@@ -33,7 +35,12 @@ Mở PowerShell tại thư mục repo:
 cd C:\path\to\kodaukovui
 ```
 
-Script build hiện tại sẽ tự tạo virtualenv build riêng là `.build-venv`, nên bạn không cần tự chuẩn bị trước nếu dùng script.
+Script build hiện tại sẽ tự:
+
+- chọn Python Windows đầu tiên trong danh sách `3.13 -> 3.12 -> 3.11 -> 3.10`
+- tạo virtualenv build riêng là `.build-venv`
+
+nên bạn không cần tự chuẩn bị trước nếu dùng script.
 
 Nếu muốn chạy tay, dùng:
 
