@@ -16,6 +16,14 @@
 - Môi trường Linux (với X11) hoặc Windows
 - Trên Linux yêu cầu `xclip`; nếu muốn khôi phục focus/popup theo vị trí chuột thì cần `xdotool`
 - Trên Windows, `pywebview` có thể cần browser runtime phù hợp trên một số máy
+- Trên Linux, repo dùng backend Qt cho `pywebview` khi build/package; build script sẽ cài thêm dependency từ `requirements-linux.txt`
+
+## Packaging đa nền tảng
+- Repo này dùng **một codebase chung** nhưng build ra **artifact riêng cho từng OS**.
+- Không có một binary duy nhất chạy nguyên xi trên Windows và Linux.
+- Build Windows phải chạy trên Windows.
+- Build Linux phải chạy trên Linux.
+- `webui/dist/` là phần UI tĩnh dùng chung; phần executable được PyInstaller đóng gói riêng theo OS.
 
 ## Chính sách hỗ trợ Windows
 - **Supported:** KoDauKoVui chạy bằng quyền user thường và ứng dụng đích cũng chạy bằng quyền user thường.
@@ -37,6 +45,7 @@ chmod +x run.sh
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
+   pip install -r requirements-linux.txt
    ```
 
 2. **Thiết lập API Keys**:
@@ -72,20 +81,40 @@ chmod +x run.sh
    ```
 
 ### Đóng gói `.exe` one-folder cho Windows
-1. Đảm bảo `webui/dist/` đã có:
-   ```powershell
-   cd webui
-   npm install
-   npm run build
-   cd ..
-   ```
-2. Build:
+1. Build:
    ```powershell
    build_windows.bat
    ```
-3. File kết quả:
+2. File kết quả:
    - `dist\KoDauKoVui\KoDauKoVui.exe`
+   - `dist\KoDauKoVui-windows-x64.zip`
+3. Script này sẽ tự:
+   - tạo `.build-venv`
+   - cài Python dependencies + `pyinstaller`
+   - build lại `webui/dist`
+   - đóng gói PyInstaller one-folder
+   - nén artifact release cho Windows
 4. Giữ `.env` cạnh file `.exe` nếu người dùng cần tự cấu hình API key.
+
+### Đóng gói one-folder cho Linux
+1. Cấp quyền chạy script:
+   ```bash
+   chmod +x build_linux.sh
+   ```
+2. Build:
+   ```bash
+   ./build_linux.sh
+   ```
+3. File kết quả:
+   - `dist/kodaukovui/kodaukovui`
+   - `dist/KoDauKoVui-linux-x64.tar.gz`
+4. Script này sẽ tự:
+   - tạo `.build-venv`
+   - cài Python dependencies + `pyinstaller`
+   - cài thêm Linux `pywebview` backend từ `requirements-linux.txt`
+   - build lại `webui/dist`
+   - đóng gói PyInstaller one-folder
+   - nén artifact release cho Linux
 
 ## Ma trận tương thích Windows
 
@@ -106,8 +135,11 @@ npm run build
 Sau khi build, thư mục `webui/dist/` sẽ chứa các file HTML/JS/CSS tĩnh, Python (`webview_host.py`) sẽ tự động tải giao diện mới từ đây.
 
 ## Ghi chú triển khai
-- Bản `.exe` one-folder dùng cùng logic runtime với bản Python, bao gồm popup/QA subprocess gọi lại chính executable bằng cờ `--webview`.
+- Bản packaged app trên cả Windows và Linux đều dùng cùng logic runtime với bản Python, bao gồm popup/QA subprocess gọi lại chính executable bằng cờ `--webview`.
 - Dữ liệu ghi được như `.env`, `history.json`, `learned.json` được đặt cạnh executable; asset tĩnh vẫn đi theo bundle.
+- Spec dùng chung là `kodaukovui.spec`, nhưng tên artifact output sẽ đổi theo OS:
+  - Windows: `KoDauKoVui`
+  - Linux: `kodaukovui`
 
 ## Cấu hình Phím Tắt (Hotkeys) mặc định
 - Thêm dấu tiếng Việt : `<ctrl>+<f1>`

@@ -1,5 +1,6 @@
 import sys
 import json
+import os
 import webview
 
 from dotenv import set_key
@@ -45,6 +46,9 @@ env_file = str(get_user_data_path(".env"))
 def run_webview_host(page="qa", ui_lang="en"):
     api = Api()
     platform_adapter = create_platform_adapter(controller=None)
+
+    if os.name != "nt":
+        os.environ.setdefault("PYWEBVIEW_GUI", "qt")
 
     html_path = get_resource_path("webui", "dist", "index.html").resolve()
     url = f"file://{html_path}?page={page}&uilang={ui_lang}"

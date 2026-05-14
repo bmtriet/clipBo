@@ -1,6 +1,9 @@
 venv/
+.build-venv/
 __pycache__/
 *.pyc
 .env
 history.json
 learned.json
+build/
+dist/

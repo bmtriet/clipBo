@@ -5,6 +5,7 @@ Tài liệu này bám theo repo hiện tại:
 - UI React build ra `webui/dist/`
 - PyInstaller dùng [`kodaukovui.spec`](/home/sgvg-gmo050/Desktop/VibeCode/kodaukovui/kodaukovui.spec:1)
 - output là bản `one-folder`, không phải `one-file`
+- build Windows phải chạy trên Windows, không cross-build từ Linux
 
 ## 1. Prerequisites
 
@@ -32,7 +33,9 @@ Mở PowerShell tại thư mục repo:
 cd C:\path\to\kodaukovui
 ```
 
-Tạo virtualenv riêng cho build:
+Script build hiện tại sẽ tự tạo virtualenv build riêng là `.build-venv`, nên bạn không cần tự chuẩn bị trước nếu dùng script.
+
+Nếu muốn chạy tay, dùng:
 
 ```powershell
 py -3 -m venv .venv
@@ -41,9 +44,11 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt pyinstaller
 ```
 
-Lý do dùng `.venv`: script [`build_windows.bat`](/home/sgvg-gmo050/Desktop/VibeCode/kodaukovui/build_windows.bat:1) hiện cài thẳng vào `py -3` global interpreter.
+Nếu dùng script, repo hiện không còn cài dependency vào interpreter global nữa.
 
 ## 3. Build Web UI
+
+Nếu dùng script [`build_windows.bat`](/home/sgvg-gmo050/Desktop/VibeCode/kodaukovui/build_windows.bat:1), bước này sẽ được chạy tự động.
 
 ```powershell
 cd .\webui
@@ -68,7 +73,7 @@ Chạy trong root repo:
 python -m PyInstaller --noconfirm kodaukovui.spec
 ```
 
-Hoặc nếu muốn dùng script sẵn có của repo:
+Khuyến nghị dùng script sẵn có của repo:
 
 ```powershell
 build_windows.bat
@@ -77,6 +82,7 @@ build_windows.bat
 Kết quả build:
 
 - `dist\KoDauKoVui\KoDauKoVui.exe`
+- `dist\KoDauKoVui-windows-x64.zip`
 
 ## 5. File nào được đóng gói
 
@@ -170,15 +176,7 @@ Kiểm tra lại WebView2 Runtime và build lại `webui/dist`.
 
 ```powershell
 cd C:\path\to\kodaukovui
-py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt pyinstaller
-cd .\webui
-npm install
-npm run build
-cd ..
-python -m PyInstaller --noconfirm kodaukovui.spec
+build_windows.bat
 Copy-Item .\.env.example .\dist\KoDauKoVui\.env
 notepad .\dist\KoDauKoVui\.env
 .\dist\KoDauKoVui\KoDauKoVui.exe

@@ -38,12 +38,8 @@ HISTORY_FILE = str(get_user_data_path("history.json"))
 LEARNED_FILE = str(get_user_data_path("learned.json"))
 HISTORY_LIMIT = 1000
 
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_token_here" else None
-openai_client = openai.OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_API_BASE) if OPENAI_API_KEY and OPENAI_API_KEY != "your_openai_api_key_here" else None
-
-if not client and not openai_client:
-    print("Vui lòng cấu hình ít nhất một API Key (Gemini hoặc OpenAI) trong file .env")
-    exit(1)
+client = None
+openai_client = None
 
 controller = keyboard.Controller()
 PLATFORM = create_platform_adapter(controller=controller, debug=DEBUG)
@@ -158,6 +154,21 @@ def build_webview_command(page: str, ui_lang: str):
     if getattr(sys, "frozen", False):
         return [sys.executable, "--webview", page, ui_lang]
     return [sys.executable, str(BUNDLE_DIR / "webview_host.py"), page, ui_lang]
+
+
+def initialize_ai_clients(require_api_key: bool = True) -> bool:
+    global client, openai_client
+
+    client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_token_here" else None
+    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_API_BASE) if OPENAI_API_KEY and OPENAI_API_KEY != "your_openai_api_key_here" else None
+
+    if client or openai_client:
+        return True
+
+    if require_api_key:
+        print("Vui lòng cấu hình ít nhất một API Key (Gemini hoặc OpenAI) trong file .env")
+
+    return False
 
 is_processing = False
 
@@ -591,6 +602,9 @@ def main():
             ui_lang = sys.argv[3] if len(sys.argv) > 3 else UI_LANGUAGE
             run_webview_host(page=page, ui_lang=ui_lang)
             return
+
+    if not initialize_ai_clients(require_api_key=True):
+        sys.exit(1)
 
     # Chạy listener ở background
     listener_thread = threading.Thread(target=start_background_listener, daemon=True)

@@ -1,9 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+import sys
 
 
 project_root = Path.cwd()
+is_windows = sys.platform.startswith("win")
+app_name = "KoDauKoVui" if is_windows else "kodaukovui"
 datas = [
     (str(project_root / "icons"), "icons"),
     (str(project_root / "webui" / "dist"), "webui/dist"),
@@ -35,7 +38,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="KoDauKoVui",
+    name=app_name,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -55,5 +58,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="KoDauKoVui",
+    name=app_name,
 )

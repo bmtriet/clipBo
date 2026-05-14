@@ -23,6 +23,9 @@ source venv/bin/activate
 echo "Checking and installing dependencies..."
 python -m pip install --quiet --upgrade pip
 python -m pip install --quiet -r requirements.txt
+if [ -f "requirements-linux.txt" ]; then
+    python -m pip install --quiet -r requirements-linux.txt
+fi
 
 # Run the application
 echo "Starting the application..."
