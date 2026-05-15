@@ -5,6 +5,9 @@ import {
   ArrowUp,
   Bot,
   ChevronRight,
+  Check,
+  Clipboard,
+  Crop,
   Image,
   Keyboard,
   Pencil,
@@ -38,13 +41,15 @@ declare global {
         sendChatMessage: (prompt: string) => Promise<ChatApiResponse>
         insertLatestReply: () => Promise<{ ok: boolean; error?: string }>
         closeChat: () => void
+        chooseImageSource: (source: string) => void
+        cancelImageSource: () => void
       }
     }
   }
 }
 
 type PywebviewApi = NonNullable<NonNullable<typeof window.pywebview>["api"]>
-type PageKind = "ask" | "popup" | "settings" | "chat"
+type PageKind = "ask" | "popup" | "settings" | "chat" | "image_source"
 type UiLanguage = "en" | "vi" | "zh"
 type ResponseMode = "paste" | "chat"
 type BuiltinKind = "ai_prompt" | "image_ask"
@@ -95,6 +100,11 @@ type AskPayload = {
   placeholder?: string
   responseModeEnabled?: boolean
   defaultResponseMode?: ResponseMode
+  contextMode?: "selected_text" | "prompt_only"
+}
+
+type ImageSourcePayload = {
+  title?: string
 }
 
 type ChatMessage = {
@@ -144,6 +154,8 @@ const translations = {
     popupFooter: "Popup-local hotkeys only work while this popup is open.",
     imageActionHint: "Ask about clipboard image or draw an ROI capture.",
     aiPromptHint: "Ask AI about the currently selected text.",
+    aiPromptHintPromptOnly: "Start a direct AI conversation without selected text.",
+    askPlaceholderPromptOnly: "Ask AI anything...",
     settingsTitle: "Settings",
     settingsSubtitle: "General settings, built-ins, and smart actions",
     close: "Close",
@@ -198,7 +210,20 @@ const translations = {
     chatInsertSuccess: "Latest reply inserted into the active app.",
     chatContextText: "Selected text context",
     chatContextImage: "Image context",
+    chatContextPromptOnly: "Direct AI chat",
     chatErrorFallback: "Failed to send the message.",
+    imageSourceTitle: "Ask by Image",
+    imageSourceHeadline: "An image is already in your clipboard.",
+    imageSourceSubtitle: "How would you like AI to use it?",
+    imageSourceClipboardTitle: "Use clipboard image",
+    imageSourceClipboardBody: "AI will analyze and answer based on the image already copied.",
+    imageSourceRoiTitle: "Select an on-screen region",
+    imageSourceRoiBody: "Draw a precise area on the screen and let AI focus on that region.",
+    imageSourceConfirmClipboard: "Use clipboard image",
+    imageSourceConfirmRoi: "Select screen region",
+    imageSourceDoNotAsk: "Don't ask again in this session",
+    popupTextActions: "Text Actions",
+    popupAiTools: "AI Tools",
   },
   vi: {
     askTitle: "Yêu cầu bổ sung",
@@ -208,6 +233,8 @@ const translations = {
     popupFooter: "Popup-local hotkey chỉ có hiệu lực khi popup đang mở.",
     imageActionHint: "Hỏi về ảnh trong clipboard hoặc quét ROI màn hình.",
     aiPromptHint: "Hỏi AI về đoạn văn bản đang được chọn.",
+    aiPromptHintPromptOnly: "Mở trao đổi AI trực tiếp mà không cần selected text.",
+    askPlaceholderPromptOnly: "Hỏi nhanh AI bất cứ điều gì...",
     settingsTitle: "Cài đặt",
     settingsSubtitle: "Cấu hình chung, built-in và smart action",
     close: "Đóng",
@@ -262,7 +289,20 @@ const translations = {
     chatInsertSuccess: "Đã chèn phản hồi mới nhất vào app đang dùng.",
     chatContextText: "Ngữ cảnh từ selected text",
     chatContextImage: "Ngữ cảnh từ hình ảnh",
+    chatContextPromptOnly: "Hỏi đáp AI trực tiếp",
     chatErrorFallback: "Không gửi được tin nhắn.",
+    imageSourceTitle: "Ask by Image",
+    imageSourceHeadline: "Clipboard đang có ảnh.",
+    imageSourceSubtitle: "Bạn muốn AI xử lý ảnh này như thế nào?",
+    imageSourceClipboardTitle: "Sử dụng ảnh trong clipboard",
+    imageSourceClipboardBody: "AI sẽ phân tích và trả lời dựa trên ảnh này.",
+    imageSourceRoiTitle: "Chọn vùng trên màn hình",
+    imageSourceRoiBody: "Chọn một vùng cụ thể trên màn hình để AI chỉ tập trung phân tích vùng đó.",
+    imageSourceConfirmClipboard: "Sử dụng ảnh clipboard",
+    imageSourceConfirmRoi: "Chọn vùng trên màn hình",
+    imageSourceDoNotAsk: "Không hỏi lại trong phiên làm việc này",
+    popupTextActions: "Thao tác văn bản",
+    popupAiTools: "Công cụ AI",
   },
   zh: {
     askTitle: "附加要求",
@@ -272,6 +312,8 @@ const translations = {
     popupFooter: "这些 action 按键只在当前弹窗打开时生效。",
     imageActionHint: "询问剪贴板图片，或框选屏幕区域后提问。",
     aiPromptHint: "围绕当前选中文本向 AI 提问。",
+    aiPromptHintPromptOnly: "无需选中文本，直接开始 AI 对话。",
+    askPlaceholderPromptOnly: "直接输入你想问 AI 的内容...",
     settingsTitle: "设置",
     settingsSubtitle: "通用设置、内建动作与 smart action",
     close: "关闭",
@@ -326,7 +368,20 @@ const translations = {
     chatInsertSuccess: "已将最新回复插入到当前应用。",
     chatContextText: "选中文本上下文",
     chatContextImage: "图像上下文",
+    chatContextPromptOnly: "直接 AI 对话",
     chatErrorFallback: "发送消息失败。",
+    imageSourceTitle: "Ask by Image",
+    imageSourceHeadline: "剪贴板中已有图片。",
+    imageSourceSubtitle: "你希望 AI 如何使用这张图片？",
+    imageSourceClipboardTitle: "使用剪贴板图片",
+    imageSourceClipboardBody: "AI 会直接基于这张已复制的图片进行分析和回答。",
+    imageSourceRoiTitle: "框选屏幕区域",
+    imageSourceRoiBody: "在屏幕上框选一个具体区域，让 AI 只聚焦分析该部分。",
+    imageSourceConfirmClipboard: "使用剪贴板图片",
+    imageSourceConfirmRoi: "框选屏幕区域",
+    imageSourceDoNotAsk: "本次会话中不再询问",
+    popupTextActions: "文本操作",
+    popupAiTools: "AI 工具",
   },
 }
 
@@ -343,7 +398,7 @@ function parsePayload<T extends object>(): T {
 
 function readPageParam(): PageKind {
   const pageParam = new URLSearchParams(window.location.search).get("page")
-  if (pageParam === "popup" || pageParam === "settings" || pageParam === "ask" || pageParam === "chat") {
+  if (pageParam === "popup" || pageParam === "settings" || pageParam === "ask" || pageParam === "chat" || pageParam === "image_source") {
     return pageParam
   }
   return "ask"
@@ -553,6 +608,8 @@ function AskUi({
   changeLang: (newLang: UiLanguage) => void
 }) {
   const payload = parsePayload<AskPayload>()
+  const placeholder =
+    payload.placeholder || (payload.contextMode === "prompt_only" ? t.askPlaceholderPromptOnly : t.askPlaceholder)
   const [prompt, setPrompt] = useState("")
   const [responseMode, setResponseMode] = useState<ResponseMode>(payload.defaultResponseMode || "paste")
   const [isComposing, setIsComposing] = useState(false)
@@ -642,7 +699,7 @@ function AskUi({
             setCompositionLockedUntil(Date.now() + 30)
           }}
           onKeyDown={handleTextareaKeyDown}
-          placeholder={payload.placeholder || t.askPlaceholder}
+          placeholder={placeholder}
           className="h-full min-h-40 w-full resize-none rounded-lg border-slate-200 bg-white p-3 text-sm shadow-inner focus-visible:border-teal-500 focus-visible:ring-teal-500"
           spellCheck={false}
           autoCapitalize="off"
@@ -665,6 +722,127 @@ function AskUi({
   )
 }
 
+function ImageSourceUi({
+  t,
+  uiLang,
+  changeLang,
+}: {
+  t: (typeof translations)["en"]
+  uiLang: UiLanguage
+  changeLang: (newLang: UiLanguage) => void
+}) {
+  const payload = parsePayload<ImageSourcePayload>()
+  const [selectedSource, setSelectedSource] = useState<"clipboard" | "roi">("clipboard")
+
+  const submit = () => {
+    window.pywebview?.api.chooseImageSource(selectedSource)
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-900/55 p-8 font-sans text-slate-900">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col overflow-hidden rounded-[2rem] border border-white/40 bg-white/95 shadow-[0_40px_120px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+        <div className="flex items-center justify-between border-b border-slate-200/80 px-12 py-10">
+          <div className="flex items-center gap-6">
+            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-teal-100 via-cyan-50 to-white text-teal-700 shadow-inner ring-1 ring-teal-100">
+              <Image className="h-10 w-10" />
+            </div>
+            <div>
+              <h1 className="text-5xl font-bold tracking-tight text-slate-800">{payload.title || t.imageSourceTitle}</h1>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <LanguagePills currentLang={uiLang} onChange={changeLang} />
+            <button
+              onClick={() => window.pywebview?.api.cancelImageSource()}
+              className="flex h-14 w-14 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-8 w-8" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col justify-between px-14 py-12">
+          <div>
+            <div className="mb-12 flex items-center gap-10">
+              <div className="flex h-44 w-44 items-center justify-center rounded-full bg-gradient-to-br from-sky-100 to-slate-50 text-sky-500 shadow-inner">
+                <Clipboard className="h-20 w-20" />
+              </div>
+              <div className="max-w-3xl">
+                <h2 className="text-6xl font-bold leading-tight tracking-tight text-slate-800">{t.imageSourceHeadline}</h2>
+                <p className="mt-5 text-3xl leading-relaxed text-slate-500">{t.imageSourceSubtitle}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setSelectedSource("clipboard")}
+                className={`group flex items-center gap-6 rounded-[1.75rem] border px-8 py-10 text-left transition-all ${
+                  selectedSource === "clipboard"
+                    ? "border-teal-300 bg-gradient-to-br from-teal-50 to-white shadow-[0_20px_60px_rgba(13,148,136,0.12)]"
+                    : "border-sky-100 bg-white hover:border-teal-200 hover:bg-slate-50"
+                }`}
+              >
+                <div className={`flex h-16 w-16 items-center justify-center rounded-full ${selectedSource === "clipboard" ? "bg-teal-500 text-white" : "bg-slate-100 text-slate-400 group-hover:text-teal-600"}`}>
+                  <Check className="h-8 w-8" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-teal-700">{t.imageSourceClipboardTitle}</div>
+                  <div className="mt-3 text-xl leading-relaxed text-slate-500">{t.imageSourceClipboardBody}</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedSource("roi")}
+                className={`group flex items-center gap-6 rounded-[1.75rem] border px-8 py-10 text-left transition-all ${
+                  selectedSource === "roi"
+                    ? "border-sky-300 bg-gradient-to-br from-sky-50 to-white shadow-[0_20px_60px_rgba(59,130,246,0.12)]"
+                    : "border-sky-100 bg-white hover:border-sky-200 hover:bg-slate-50"
+                }`}
+              >
+                <div className={`flex h-16 w-16 items-center justify-center rounded-full ${selectedSource === "roi" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-400 group-hover:text-sky-600"}`}>
+                  <Crop className="h-8 w-8" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-sky-700">{t.imageSourceRoiTitle}</div>
+                  <div className="mt-3 text-xl leading-relaxed text-slate-500">{t.imageSourceRoiBody}</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-12 flex items-center justify-between border-t border-slate-200/80 pt-8">
+            <label className="flex items-center gap-4 text-xl text-slate-700 opacity-60">
+              <span className="flex h-10 w-10 rounded-xl border-2 border-slate-300 bg-white" />
+              {t.imageSourceDoNotAsk}
+            </label>
+
+            <div className="flex items-center gap-6">
+              <button
+                type="button"
+                onClick={() => window.pywebview?.api.cancelImageSource()}
+                className="rounded-2xl border border-slate-300 bg-white px-10 py-5 text-2xl font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                className={`rounded-2xl px-12 py-5 text-2xl font-semibold text-white shadow-[0_20px_60px_rgba(15,118,110,0.25)] transition ${
+                  selectedSource === "clipboard" ? "bg-teal-600 hover:bg-teal-700" : "bg-sky-600 hover:bg-sky-700"
+                }`}
+              >
+                {selectedSource === "clipboard" ? t.imageSourceConfirmClipboard : t.imageSourceConfirmRoi}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PopupUi({
   t,
   uiLang,
@@ -678,7 +856,9 @@ function PopupUi({
   actions: SmartAction[]
   builtinActions: BuiltinAction[]
 }) {
-  const popupItems = useMemo(() => [...actions, ...builtinActions], [actions, builtinActions])
+  const textItems = useMemo(() => actions, [actions])
+  const aiItems = useMemo(() => builtinActions, [builtinActions])
+  const popupItems = useMemo(() => [...textItems, ...aiItems], [textItems, aiItems])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -698,76 +878,96 @@ function PopupUi({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [popupItems])
 
+  const renderPopupAction = (action: SmartAction | BuiltinAction) => {
+    const isBuiltin = "kind" in action
+    const hint =
+      isBuiltin && action.kind === "image_ask"
+        ? t.imageActionHint
+        : isBuiltin && action.kind === "ai_prompt"
+          ? t.aiPromptHint
+          : `${(action as SmartAction).ask_before_run ? t.askBeforeRun : "Run direct"}${
+              (action as SmartAction).return_with_source ? " • With source" : ""
+            }`
+
+    const Icon = isBuiltin ? (action.kind === "image_ask" ? Image : Bot) : ChevronRight
+    const iconStyle = isBuiltin
+      ? action.kind === "image_ask"
+        ? "text-amber-500"
+        : "text-teal-600"
+      : "text-teal-500"
+
+    return (
+      <button
+        key={action.id}
+        onClick={() => window.pywebview?.api.submitPopup(action.id)}
+        className="group flex items-center rounded-2xl border border-slate-200/90 bg-white px-4 py-3 text-left shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition hover:border-teal-200 hover:shadow-[0_12px_28px_rgba(20,184,166,0.08)]"
+      >
+        <div className="mr-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xl font-bold text-slate-800 shadow-sm">
+          {action.hotkey.toUpperCase()}
+        </div>
+        <div className={`mr-3 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 ${iconStyle}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-grow">
+          <div className="truncate text-sm font-semibold text-slate-900">{action.name}</div>
+          <div className="mt-0.5 truncate text-xs text-slate-500">{hint}</div>
+        </div>
+      </button>
+    )
+  }
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden rounded-xl border border-slate-200/50 bg-slate-50/95 font-sans shadow-2xl backdrop-blur-md">
-      <div className="pywebview-drag-region flex cursor-move items-center border-b border-slate-200/50 bg-white/60 p-4">
-        <div className="mr-3 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-teal-100 to-blue-100 shadow-inner">
-          <Sparkles className="h-4 w-4 text-teal-600" />
+    <div className="h-screen bg-transparent p-3 font-sans text-slate-900">
+      <div className="flex h-full flex-col overflow-hidden rounded-[1.6rem] border border-teal-200/80 bg-white/96 shadow-[0_28px_80px_rgba(15,23,42,0.22),0_0_0_1px_rgba(45,212,191,0.22)] backdrop-blur-xl">
+        <div className="pywebview-drag-region flex cursor-move items-center border-b border-slate-200/80 px-5 py-4">
+          <div className="mr-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-teal-100 via-cyan-50 to-white shadow-inner ring-1 ring-teal-100">
+            <Sparkles className="h-6 w-6 text-teal-600" />
+          </div>
+          <div className="flex-grow">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-800">{t.popupTitle}</h2>
+            <p className="mt-1 text-sm text-slate-500">{t.popupSubtitle}</p>
+          </div>
+          <div className="mr-3">
+            <LanguagePills currentLang={uiLang} onChange={changeLang} />
+          </div>
+          <button
+            onClick={() => window.pywebview?.api.openSettings()}
+            className="mr-1 flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-teal-600"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => window.pywebview?.api.cancelPopup()}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <div className="flex-grow">
-          <h2 className="text-sm font-bold text-slate-800">{t.popupTitle}</h2>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{t.popupSubtitle}</p>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="mb-4 flex items-center gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{t.popupTextActions}</h3>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {textItems.map((action) => renderPopupAction(action))}
+          </div>
+
+          <div className="my-5 flex items-center gap-3">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{t.popupAiTools}</h3>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {aiItems.map((action) => renderPopupAction(action))}
+          </div>
         </div>
-        <div className="mr-2">
-          <LanguagePills currentLang={uiLang} onChange={changeLang} />
+
+        <div className="border-t border-slate-200/80 bg-slate-50/80 px-5 py-4">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 text-sm text-slate-500 shadow-sm">
+            <AlertCircle className="h-4 w-4 text-slate-400" />
+            {t.popupFooter}
+          </div>
         </div>
-        <button
-          onClick={() => window.pywebview?.api.openSettings()}
-          className="mr-1 flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-200 hover:text-teal-600"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => window.pywebview?.api.cancelPopup()}
-          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="flex-grow overflow-y-auto px-2 py-3">
-        {popupItems.map((action) => {
-          const isBuiltin = "kind" in action
-          const hint =
-            isBuiltin && action.kind === "image_ask"
-              ? t.imageActionHint
-              : isBuiltin && action.kind === "ai_prompt"
-                ? t.aiPromptHint
-                : `${(action as SmartAction).ask_before_run ? t.askBeforeRun : "Run direct"}${
-                    (action as SmartAction).return_with_source ? " • With source" : ""
-                  }`
-
-          const Icon = isBuiltin ? (action.kind === "image_ask" ? Image : Bot) : ChevronRight
-          const iconStyle = isBuiltin
-            ? action.kind === "image_ask"
-              ? "bg-amber-50 text-amber-600"
-              : "bg-sky-50 text-sky-600"
-            : "bg-transparent text-slate-300"
-
-          return (
-            <button
-              key={action.id}
-              onClick={() => window.pywebview?.api.submitPopup(action.id)}
-              className="mb-1 flex w-full items-center rounded-lg border border-transparent px-3 py-2.5 text-left transition-all hover:border-slate-200/50 hover:bg-white hover:shadow-sm"
-            >
-              <div className="mr-3 flex h-7 w-7 items-center justify-center rounded bg-white text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200">
-                {action.hotkey.toUpperCase()}
-              </div>
-              <div className={`mr-3 flex h-8 w-8 items-center justify-center rounded-full ${iconStyle}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-grow">
-                <div className="truncate text-sm font-medium text-slate-800">{action.name}</div>
-                <div className="truncate text-xs text-slate-500">{hint}</div>
-              </div>
-              <ChevronRight className="h-4 w-4 text-slate-300" />
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="border-t border-slate-200/50 bg-slate-100/50 p-3 text-center">
-        <p className="text-[11px] font-medium text-slate-500">{t.popupFooter}</p>
       </div>
     </div>
   )
@@ -1276,7 +1476,11 @@ function ChatUi({
           </h2>
           <p className="text-xs text-slate-500">
             {session?.context_hint ||
-              (session?.kind === "image_ask" ? t.chatContextImage : t.chatContextText)}
+              (session?.kind === "image_ask"
+                ? t.chatContextImage
+                : session?.selected_text
+                  ? t.chatContextText
+                  : t.chatContextPromptOnly)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1455,6 +1659,10 @@ export default function App() {
 
   if (page === "chat") {
     return <ChatUi t={t} uiLang={lang} changeLang={changeLang} />
+  }
+
+  if (page === "image_source") {
+    return <ImageSourceUi t={t} uiLang={lang} changeLang={changeLang} />
   }
 
   return <AskUi t={t} uiLang={lang} changeLang={changeLang} />

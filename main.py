@@ -5,9 +5,7 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox
 import uuid
 
 from pynput import keyboard
@@ -383,6 +381,50 @@ def show_ask_window(title: str, placeholder: str, response_mode_enabled: bool = 
             "placeholder": placeholder,
             "responseModeEnabled": response_mode_enabled,
             "defaultResponseMode": "paste",
+            "contextMode": "selected_text",
+        },
+    )
+    if isinstance(data, dict):
+        return {
+            "prompt": str(data.get("prompt", "") or "").strip(),
+            "response_mode": str(data.get("response_mode", "paste") or "paste").strip().lower(),
+        }
+    return None
+
+
+def get_ai_prompt_copy(has_selected_text: bool):
+    if UI_LANGUAGE == "vi":
+        return {
+            "placeholder": "Nhập yêu cầu của bạn cho đoạn văn bản này..."
+            if has_selected_text
+            else "Hỏi nhanh AI bất cứ điều gì...",
+            "context_mode": "selected_text" if has_selected_text else "prompt_only",
+        }
+    if UI_LANGUAGE == "zh":
+        return {
+            "placeholder": "围绕这段文本输入你的要求..."
+            if has_selected_text
+            else "直接输入你想问 AI 的内容...",
+            "context_mode": "selected_text" if has_selected_text else "prompt_only",
+        }
+    return {
+        "placeholder": "Enter your request for the selected text..."
+        if has_selected_text
+        else "Ask AI anything...",
+        "context_mode": "selected_text" if has_selected_text else "prompt_only",
+    }
+
+
+def show_ai_prompt_window(title: str, placeholder: str, context_mode: str):
+    data = run_webview_page(
+        "ask",
+        UI_LANGUAGE,
+        {
+            "title": title,
+            "placeholder": placeholder,
+            "responseModeEnabled": True,
+            "defaultResponseMode": "paste",
+            "contextMode": context_mode,
         },
     )
     if isinstance(data, dict):
@@ -407,7 +449,7 @@ def capture_image_context():
         return None, clipboard_error
 
     if clipboard_payload:
-        source_choice = choose_image_source()
+        source_choice = show_image_source_window()
         if source_choice == "clipboard":
             return clipboard_payload, None
         if source_choice == "roi":
@@ -424,21 +466,17 @@ def capture_image_context():
     return None, "[HỦY] Không có ảnh clipboard và người dùng đã hủy ROI capture."
 
 
-def choose_image_source():
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    root.update_idletasks()
-    result = messagebox.askyesnocancel(
-        "Ask by Image",
-        "Clipboard đang có ảnh.\n\nYes: dùng ảnh clipboard\nNo: vẽ ROI trên màn hình\nCancel: hủy",
-        parent=root,
+def show_image_source_window():
+    result = run_webview_page(
+        "image_source",
+        UI_LANGUAGE,
+        {
+            "title": "Ask by Image",
+        },
     )
-    root.destroy()
-    if result is True:
-        return "clipboard"
-    if result is False:
-        return "roi"
+    if isinstance(result, dict):
+        source = str(result.get("source", "") or "").strip().lower()
+        return source or None
     return None
 
 
@@ -547,6 +585,7 @@ def on_ai_prompt_activate(pre_selected_text=None, target_window_id=None):
 
         print(f"\n[HOTKEY] Đang xử lý built-in action: {builtin_action['name']}...")
 
+        selected_text = ""
         if pre_selected_text is not None:
             selected_text = pre_selected_text
         else:
@@ -554,14 +593,13 @@ def on_ai_prompt_activate(pre_selected_text=None, target_window_id=None):
             if selection_error:
                 print(selection_error)
                 return
-            if not selected_text:
-                print("[LỖI] Không có văn bản được chọn hoặc trong clipboard.")
-                return
 
-        ask_result = show_ask_window(
+        prompt_copy = get_ai_prompt_copy(bool(selected_text.strip()))
+
+        ask_result = show_ai_prompt_window(
             builtin_action["name"],
-            "Nhập yêu cầu của bạn cho đoạn văn bản này...",
-            response_mode_enabled=True,
+            prompt_copy["placeholder"],
+            prompt_copy["context_mode"],
         )
         if ask_result is None or not ask_result["prompt"].strip():
             print("[HỦY] Đã hủy AI Prompt.")
@@ -598,7 +636,8 @@ def on_ai_prompt_activate(pre_selected_text=None, target_window_id=None):
             print(paste_error)
             return
 
-        save_history(selected_text, result_text, user_edit=False)
+        history_source = selected_text if selected_text else f"[ai-prompt] {ask_result['prompt'].strip()}"
+        save_history(history_source, result_text, user_edit=False)
         print(f"[THÀNH CÔNG] Đã hoàn tất {builtin_action['name']}!")
     except Exception as ex:
         print(f"\n[LỖI NGHIÊM TRỌNG] Đã xảy ra lỗi trong quá trình xử lý AI Prompt: {ex}")
@@ -722,13 +761,11 @@ def show_popup_menu():
             return
 
         if choice == AI_PROMPT_ID:
+            selected_text = ""
+            selection_error = None
             selected_text, selection_error = PLATFORM.get_selected_text(target_window_id=target_window_id)
             if selection_error:
                 print(selection_error)
-                is_processing = False
-                return
-            if not selected_text:
-                print("[LỖI] AI Prompt cần selected text. Hãy bôi đen văn bản trước rồi mở popup, hoặc dùng action khác.")
                 is_processing = False
                 return
 

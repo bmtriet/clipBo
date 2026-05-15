@@ -80,6 +80,7 @@ POPUP_PAGE = "popup"
 ASK_PAGE = "ask"
 SETTINGS_PAGE = "settings"
 CHAT_PAGE = "chat"
+IMAGE_SOURCE_PAGE = "image_source"
 WINDOW_SETTLE_DELAY_SECONDS = 0.18
 
 
@@ -198,6 +199,8 @@ def resolve_window_config(page: str):
         return {"width": 900, "height": 760, "title": "KoDauKoVui Chat", "resizable": True}
     if page == SETTINGS_PAGE:
         return {"width": 980, "height": 780, "title": "KoDauKoVui Settings", "resizable": False}
+    if page == IMAGE_SOURCE_PAGE:
+        return {"width": 1280, "height": 860, "title": "Ask by Image", "resizable": False}
     return {"width": 420, "height": 560, "title": "Chọn chức năng", "resizable": False}
 
 
@@ -247,11 +250,14 @@ class PageApi:
         kind = str(raw_session.get("kind", "") or "").strip()
         selected_text = str(raw_session.get("selected_text", "") or "").strip()
         image_payload = deserialize_image_payload(raw_session.get("image_payload"))
-        context_hint = (
-            "Using selected text as the discussion context."
-            if kind == "ai_prompt"
-            else "Using the captured image as the discussion context."
-        )
+        if kind == "ai_prompt":
+            context_hint = (
+                "Using selected text as the discussion context."
+                if selected_text
+                else "Direct AI chat with no selected-text context."
+            )
+        else:
+            context_hint = "Using the captured image as the discussion context."
         return {
             "kind": kind,
             "title": str(raw_session.get("title", "Chat") or "Chat"),
@@ -274,6 +280,14 @@ class PageApi:
         self._hide_window()
 
     def cancelAsk(self):
+        self._emit({"type": "cancel"})
+        self._hide_window()
+
+    def chooseImageSource(self, source):
+        self._emit({"source": str(source or "").strip().lower()})
+        self._hide_window()
+
+    def cancelImageSource(self):
         self._emit({"type": "cancel"})
         self._hide_window()
 
@@ -445,6 +459,8 @@ class BrokerState:
             api.cancelPopup()
         elif page_name == SETTINGS_PAGE:
             api.closeSettings(False)
+        elif page_name == IMAGE_SOURCE_PAGE:
+            api.cancelImageSource()
         elif page_name == CHAT_PAGE:
             api.closeChat()
         else:
@@ -523,6 +539,7 @@ def create_broker_windows(state: BrokerState):
     ask_api = PageApi(ASK_PAGE, state.platform_adapter)
     settings_api = PageApi(SETTINGS_PAGE, state.platform_adapter)
     chat_api = PageApi(CHAT_PAGE, state.platform_adapter)
+    image_source_api = PageApi(IMAGE_SOURCE_PAGE, state.platform_adapter)
 
     popup = webview.create_window(
         "KoDauKoVui Popup",
@@ -573,11 +590,24 @@ def create_broker_windows(state: BrokerState):
         easy_drag=False,
         resizable=True,
     )
+    image_source = webview.create_window(
+        "Ask by Image",
+        html="<html><body></body></html>",
+        js_api=image_source_api,
+        width=1280,
+        height=860,
+        hidden=True,
+        frameless=False,
+        transparent=False,
+        easy_drag=False,
+        resizable=False,
+    )
 
     state.attach_window(POPUP_PAGE, popup, popup_api)
     state.attach_window(ASK_PAGE, ask, ask_api)
     state.attach_window(SETTINGS_PAGE, settings, settings_api)
     state.attach_window(CHAT_PAGE, chat, chat_api)
+    state.attach_window(IMAGE_SOURCE_PAGE, image_source, image_source_api)
 
 
 def run_webview_broker():

@@ -63,11 +63,16 @@ def build_ai_prompt_first_turn(brain_ctx: str, selected_text: str, user_instruct
     sections = []
     if brain_ctx.strip():
         sections.append(brain_ctx.strip())
-    sections.append(
-        "You are a helpful AI assistant. Use the selected text below as the core working context for the discussion. "
-        "Answer the user's request directly and naturally."
-    )
-    sections.append(f"[SELECTED TEXT]\n{selected_text}\n[END SELECTED TEXT]")
+    if selected_text.strip():
+        sections.append(
+            "You are a helpful AI assistant. Use the selected text below as the core working context for the discussion. "
+            "Answer the user's request directly and naturally."
+        )
+        sections.append(f"[SELECTED TEXT]\n{selected_text}\n[END SELECTED TEXT]")
+    else:
+        sections.append(
+            "You are a helpful AI assistant. Answer the user's request directly, naturally, and with practical detail when useful."
+        )
     sections.append(f"[USER REQUEST]\n{user_instruction.strip()}\n[END USER REQUEST]")
     return "\n\n".join(section for section in sections if section)
 
@@ -148,18 +153,26 @@ def _openai_chat_messages(session: dict[str, Any], brain_ctx: str):
         messages.append({"role": "system", "content": brain_ctx.strip()})
 
     if session["kind"] == "ai_prompt":
-        messages.append(
-            {
-                "role": "system",
-                "content": "Use the selected text as background context for the whole discussion.",
-            }
-        )
-        messages.append(
-            {
-                "role": "system",
-                "content": f"[SELECTED TEXT]\n{session['selected_text']}\n[END SELECTED TEXT]",
-            }
-        )
+        if session["selected_text"].strip():
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "Use the selected text as background context for the whole discussion.",
+                }
+            )
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"[SELECTED TEXT]\n{session['selected_text']}\n[END SELECTED TEXT]",
+                }
+            )
+        else:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "This is a direct chat with no selected-text context. Answer naturally and focus on the user's latest question.",
+                }
+            )
 
         for message in session["messages"]:
             messages.append({"role": message["role"], "content": message["content"]})
@@ -202,12 +215,20 @@ def _gemini_chat_contents(session: dict[str, Any], brain_ctx: str):
     if brain_ctx.strip():
         contents.append({"role": "user", "parts": [{"text": brain_ctx.strip()}]})
     if session["kind"] == "ai_prompt":
-        contents.append(
-            {
-                "role": "user",
-                "parts": [{"text": f"[SELECTED TEXT]\n{session['selected_text']}\n[END SELECTED TEXT]"}],
-            }
-        )
+        if session["selected_text"].strip():
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [{"text": f"[SELECTED TEXT]\n{session['selected_text']}\n[END SELECTED TEXT]"}],
+                }
+            )
+        else:
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [{"text": "This is a direct chat with no selected-text context. Answer the user's latest question naturally."}],
+                }
+            )
         for message in session["messages"]:
             role = "model" if message["role"] == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": message["content"]}]})
