@@ -5,8 +5,52 @@ import queue
 import shutil
 import sys
 import threading
+import time
 import urllib.parse
+import warnings
 from dataclasses import dataclass
+
+
+def _resolve_linux_ime_module() -> str:
+    has_fcitx5 = shutil.which("fcitx5-remote") is not None
+    has_fcitx = shutil.which("fcitx-remote") is not None
+    return "fcitx" if (has_fcitx5 or has_fcitx) else "ibus"
+
+
+def _get_pyqt5_plugin_path() -> str | None:
+    """Return the PyQt5 Qt5/plugins path bundled in the same venv as this script."""
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("PyQt5")
+        if spec and spec.submodule_search_locations:
+            for loc in spec.submodule_search_locations:
+                candidate = os.path.join(loc, "Qt5", "plugins")
+                if os.path.isdir(candidate):
+                    return candidate
+    except Exception:
+        pass
+    return None
+
+
+def _preconfigure_linux_input_method_env() -> None:
+    if os.name == "nt":
+        return
+
+    preferred_module = _resolve_linux_ime_module()
+    os.environ["PYWEBVIEW_GUI"] = "qt"
+    os.environ["QT_IM_MODULE"] = preferred_module
+    os.environ["GTK_IM_MODULE"] = preferred_module
+    os.environ["XMODIFIERS"] = "@im=fcitx" if preferred_module == "fcitx" else "@im=ibus"
+
+    # Ensure Qt can find the fcitx5 input context plugin inside the venv
+    pyqt5_plugins = _get_pyqt5_plugin_path()
+    if pyqt5_plugins:
+        existing = os.environ.get("QT_PLUGIN_PATH", "")
+        if pyqt5_plugins not in existing:
+            os.environ["QT_PLUGIN_PATH"] = f"{pyqt5_plugins}:{existing}" if existing else pyqt5_plugins
+
+
+_preconfigure_linux_input_method_env()
 
 import webview
 from dotenv import set_key
@@ -36,6 +80,19 @@ POPUP_PAGE = "popup"
 ASK_PAGE = "ask"
 SETTINGS_PAGE = "settings"
 CHAT_PAGE = "chat"
+WINDOW_SETTLE_DELAY_SECONDS = 0.18
+
+
+warnings.filterwarnings(
+    "ignore",
+    message="Async interactions client cannot use aiohttp, fallingback to httpx.",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message="URL.raw is deprecated.",
+    category=UserWarning,
+)
 
 
 def emit_and_exit(payload, exit_code=0):
@@ -83,30 +140,25 @@ def serialize_session(session):
 
 
 def configure_linux_input_method(debug: bool) -> None:
-    os.environ.setdefault("PYWEBVIEW_GUI", "qt")
+    preferred_module = _resolve_linux_ime_module()
+    has_fcitx5 = shutil.which("fcitx5-remote") is not None
+    has_fcitx = shutil.which("fcitx-remote") is not None
+    has_ibus = shutil.which("ibus-daemon") is not None
 
-    qt_im = os.environ.get("QT_IM_MODULE", "").strip()
-    gtk_im = os.environ.get("GTK_IM_MODULE", "").strip()
-    xmods = os.environ.get("XMODIFIERS", "").strip()
+    # Qt WebEngine needs the runtime process env to match the real IME backend.
+    # Respecting inherited ibus values breaks fcitx5/UniKey composition on Linux.
+    os.environ["PYWEBVIEW_GUI"] = "qt"
+    os.environ["QT_IM_MODULE"] = preferred_module
+    os.environ["GTK_IM_MODULE"] = preferred_module
+    os.environ["XMODIFIERS"] = "@im=fcitx" if preferred_module == "fcitx" else "@im=ibus"
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu-driver-bug-workarounds")
 
-    preferred_module = ""
-    if qt_im:
-        preferred_module = qt_im
-    elif gtk_im:
-        preferred_module = gtk_im
-    elif shutil.which("fcitx5-remote") or shutil.which("fcitx-remote"):
-        preferred_module = "fcitx"
-    else:
-        preferred_module = "ibus"
-
-    os.environ.setdefault("QT_IM_MODULE", preferred_module)
-    os.environ.setdefault("GTK_IM_MODULE", preferred_module)
-
-    if not xmods:
-        if preferred_module.startswith("fcitx"):
-            os.environ["XMODIFIERS"] = "@im=fcitx"
-        else:
-            os.environ["XMODIFIERS"] = "@im=ibus"
+    # Ensure Qt can find the fcitx5 input context plugin inside the venv
+    pyqt5_plugins = _get_pyqt5_plugin_path()
+    if pyqt5_plugins:
+        existing = os.environ.get("QT_PLUGIN_PATH", "")
+        if pyqt5_plugins not in existing:
+            os.environ["QT_PLUGIN_PATH"] = f"{pyqt5_plugins}:{existing}" if existing else pyqt5_plugins
 
     if debug:
         print(
@@ -114,9 +166,10 @@ def configure_linux_input_method(debug: bool) -> None:
             f"QT_IM_MODULE={os.environ.get('QT_IM_MODULE', '')} "
             f"GTK_IM_MODULE={os.environ.get('GTK_IM_MODULE', '')} "
             f"XMODIFIERS={os.environ.get('XMODIFIERS', '')} "
-            f"fcitx5={'yes' if shutil.which('fcitx5-remote') else 'no'} "
-            f"fcitx={'yes' if shutil.which('fcitx-remote') else 'no'} "
-            f"ibus={'yes' if shutil.which('ibus-daemon') else 'no'}",
+            f"preferred={preferred_module} "
+            f"fcitx5={'yes' if has_fcitx5 else 'no'} "
+            f"fcitx={'yes' if has_fcitx else 'no'} "
+            f"ibus={'yes' if has_ibus else 'no'}",
             file=sys.stderr,
             flush=True,
         )
@@ -225,16 +278,19 @@ class PageApi:
         self._hide_window()
 
     def submitPopup(self, action_id):
-        self._emit({"type": "popup_action", "action_id": action_id})
         self._hide_window()
+        time.sleep(WINDOW_SETTLE_DELAY_SECONDS)
+        self._emit({"type": "popup_action", "action_id": action_id})
 
     def cancelPopup(self):
-        self._emit({"type": "cancel"})
         self._hide_window()
+        time.sleep(WINDOW_SETTLE_DELAY_SECONDS)
+        self._emit({"type": "cancel"})
 
     def openSettings(self):
-        self._emit({"type": "open_settings"})
         self._hide_window()
+        time.sleep(WINDOW_SETTLE_DELAY_SECONDS)
+        self._emit({"type": "open_settings"})
 
     def setUiLanguage(self, lang):
         try:
@@ -458,6 +514,8 @@ class BrokerState:
             window.restore()
         except Exception:
             pass
+        if page == CHAT_PAGE:
+            self.emit_response(request.request_id, {"type": "opened"})
 
 
 def create_broker_windows(state: BrokerState):

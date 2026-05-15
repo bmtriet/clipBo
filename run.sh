@@ -53,6 +53,24 @@ fi
 
 cleanup_stuck_processes
 
+# Set IME environment variables before launching Python
+# This ensures the broker subprocess inherits the correct fcitx5 config
+if command -v fcitx5-remote &>/dev/null || command -v fcitx-remote &>/dev/null; then
+    export QT_IM_MODULE=fcitx
+    export GTK_IM_MODULE=fcitx
+    export XMODIFIERS="@im=fcitx"
+else
+    export QT_IM_MODULE=ibus
+    export GTK_IM_MODULE=ibus
+    export XMODIFIERS="@im=ibus"
+fi
+
+# Point Qt to the venv's PyQt5 plugin directory (contains fcitx5 input context plugin)
+VENV_QT_PLUGINS="$(pwd)/venv/lib/python3.10/site-packages/PyQt5/Qt5/plugins"
+if [ -d "$VENV_QT_PLUGINS" ]; then
+    export QT_PLUGIN_PATH="$VENV_QT_PLUGINS${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+fi
+
 # Run the application
 echo "Starting the application..."
 python main.py

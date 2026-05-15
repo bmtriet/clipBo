@@ -96,7 +96,19 @@ class WebviewBrokerClient:
         for line in self.process.stderr:
             line = line.rstrip()
             if line:
+                if self._should_ignore_stderr(line):
+                    continue
                 print(f"[WEBVIEW BROKER] {line}")
+
+    @staticmethod
+    def _should_ignore_stderr(line: str) -> bool:
+        ignored_fragments = (
+            "Async interactions client cannot use aiohttp, fallingback to httpx.",
+            "URL.raw is deprecated.",
+            "Registered new object after initialization, existing clients won't be notified!",
+            "GBM is not supported with the current configuration. Fallback to Vulkan rendering in Chromium.",
+        )
+        return any(fragment in line for fragment in ignored_fragments)
 
     def start(self):
         with self.lock:
@@ -444,6 +456,8 @@ def serialize_image_payload(image_payload: dict | None):
 
 def run_chat_window(session_payload: dict):
     result = run_webview_page("chat", UI_LANGUAGE, session_payload)
+    if isinstance(result, dict) and result.get("type") == "opened":
+        return
     if isinstance(result, dict) and result.get("type") == "chat_inserted":
         print("[CHAT] Đã chèn phản hồi mới nhất vào ứng dụng đích.")
     elif isinstance(result, dict) and result.get("type") == "chat_closed":
@@ -714,7 +728,7 @@ def show_popup_menu():
                 is_processing = False
                 return
             if not selected_text:
-                print("[LỖI] Không có văn bản được chọn hoặc trong clipboard.")
+                print("[LỖI] AI Prompt cần selected text. Hãy bôi đen văn bản trước rồi mở popup, hoặc dùng action khác.")
                 is_processing = False
                 return
 

@@ -341,6 +341,22 @@ function parsePayload<T extends object>(): T {
   }
 }
 
+function readPageParam(): PageKind {
+  const pageParam = new URLSearchParams(window.location.search).get("page")
+  if (pageParam === "popup" || pageParam === "settings" || pageParam === "ask" || pageParam === "chat") {
+    return pageParam
+  }
+  return "ask"
+}
+
+function readUiLangParam(): UiLanguage {
+  const langParam = new URLSearchParams(window.location.search).get("uilang")
+  if (langParam === "en" || langParam === "vi" || langParam === "zh") {
+    return langParam
+  }
+  return "en"
+}
+
 function createActionId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID()
@@ -403,6 +419,19 @@ function waitForPywebviewApi(timeoutMs = 5000): Promise<PywebviewApi> {
     window.addEventListener("pywebviewready", onReady as EventListener)
     check()
   })
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  const tagName = target.tagName.toLowerCase()
+  return tagName === "input" || tagName === "textarea" || target.isContentEditable
+}
+
+function isImeComposing(event: KeyboardEvent): boolean {
+  return Boolean((event as KeyboardEvent & { isComposing?: boolean }).isComposing) || event.key === "Process"
 }
 
 function InputField(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -527,10 +556,13 @@ function AskUi({
   const [prompt, setPrompt] = useState("")
   const [responseMode, setResponseMode] = useState<ResponseMode>(payload.defaultResponseMode || "paste")
   const [isComposing, setIsComposing] = useState(false)
+  const [compositionLockedUntil, setCompositionLockedUntil] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    textareaRef.current?.focus()
+    if (document.activeElement !== textareaRef.current) {
+      textareaRef.current?.focus()
+    }
   }, [])
 
   const submit = () => {
@@ -539,7 +571,7 @@ function AskUi({
 
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean }
-    const composing = isComposing || Boolean(native.isComposing)
+    const composing = isComposing || Boolean(native.isComposing) || Date.now() < compositionLockedUntil
 
     if (e.key === "Escape" && !composing) {
       e.preventDefault()
@@ -605,7 +637,10 @@ function AskUi({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onCompositionStart={() => setIsComposing(true)}
-          onCompositionEnd={() => setIsComposing(false)}
+          onCompositionEnd={() => {
+            setIsComposing(false)
+            setCompositionLockedUntil(Date.now() + 30)
+          }}
           onKeyDown={handleTextareaKeyDown}
           placeholder={payload.placeholder || t.askPlaceholder}
           className="h-full min-h-40 w-full resize-none rounded-lg border-slate-200 bg-white p-3 text-sm shadow-inner focus-visible:border-teal-500 focus-visible:ring-teal-500"
@@ -647,6 +682,9 @@ function PopupUi({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e) || isEditableTarget(e.target)) {
+        return
+      }
       if (e.key === "Escape") {
         window.pywebview?.api.cancelPopup()
         return
@@ -773,6 +811,9 @@ function SmartActionDialog({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isImeComposing(e) || isEditableTarget(e.target)) {
+        return
+      }
       if (e.key === "Escape") {
         onClose()
       }
@@ -1146,17 +1187,20 @@ function ChatUi({
   const [error, setError] = useState("")
   const [insertSuccess, setInsertSuccess] = useState("")
   const [isComposing, setIsComposing] = useState(false)
+  const [compositionLockedUntil, setCompositionLockedUntil] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    textareaRef.current?.focus()
+    if (document.activeElement !== textareaRef.current) {
+      textareaRef.current?.focus()
+    }
   }, [session])
 
   useEffect(() => {
     let mounted = true
     const bootstrap = async () => {
-      const api = window.pywebview?.api
-      if (!api) return
+      const api = await waitForPywebviewApi()
+      if (!mounted) return
       const response = await api.bootstrapChat()
       if (!mounted) return
       if (!response?.ok) {
@@ -1166,7 +1210,12 @@ function ChatUi({
       }
       setLoading(false)
     }
-    bootstrap()
+    bootstrap().catch(() => {
+      if (mounted) {
+        setError(t.chatErrorFallback)
+        setLoading(false)
+      }
+    })
     return () => {
       mounted = false
     }
@@ -1201,7 +1250,7 @@ function ChatUi({
 
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean }
-    const composing = isComposing || Boolean(native.isComposing)
+    const composing = isComposing || Boolean(native.isComposing) || Date.now() < compositionLockedUntil
 
     if (e.key === "Escape" && !composing) {
       e.preventDefault()
@@ -1289,7 +1338,10 @@ function ChatUi({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onCompositionStart={() => setIsComposing(true)}
-          onCompositionEnd={() => setIsComposing(false)}
+          onCompositionEnd={() => {
+            setIsComposing(false)
+            setCompositionLockedUntil(Date.now() + 30)
+          }}
           onKeyDown={handleTextareaKeyDown}
           placeholder={t.chatPlaceholder}
           className="min-h-28 resize-none bg-white"
@@ -1320,27 +1372,25 @@ function ChatUi({
 }
 
 export default function App() {
-  const [page, setPage] = useState<PageKind>("ask")
-  const [lang, setLang] = useState<UiLanguage>("en")
+  const [page] = useState<PageKind>(() => readPageParam())
+  const [lang, setLang] = useState<UiLanguage>(() => readUiLangParam())
   const [settings, setSettings] = useState<GeneralSettings>(defaultSettings)
   const [actions, setActions] = useState<SmartAction[]>([])
   const [builtinActions, setBuiltinActions] = useState<BuiltinAction[]>([])
-  const [loading, setLoading] = useState(true)
+  const requiresSettingsSnapshot = page === "popup" || page === "settings"
+  const [loading, setLoading] = useState(requiresSettingsSnapshot)
   const [loadError, setLoadError] = useState("")
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const pageParam = params.get("page")
-    if (pageParam === "popup" || pageParam === "settings" || pageParam === "ask" || pageParam === "chat") {
-      setPage(pageParam)
+    if (!requiresSettingsSnapshot) {
+      return
     }
-  }, [])
 
-  useEffect(() => {
     let mounted = true
     const hydrate = async () => {
       try {
         const api = await waitForPywebviewApi()
+        await new Promise((resolve) => window.setTimeout(resolve, 50))
         const snapshot = await api.getSettingsSnapshot()
         if (snapshot && mounted) {
           setSettings({ ...defaultSettings, ...snapshot.settings })
@@ -1362,7 +1412,7 @@ export default function App() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [lang, requiresSettingsSnapshot])
 
   const changeLang = (newLang: UiLanguage) => {
     setLang(newLang)
