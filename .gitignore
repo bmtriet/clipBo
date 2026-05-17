@@ -8,3 +8,4 @@ history.json
 learned.json
 build/
 dist/
+webui/src-tauri/target/

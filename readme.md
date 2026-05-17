@@ -97,6 +97,27 @@ Artifact:
 - Linux: `dist/kodaukovui/kodaukovui` và `dist/KoDauKoVui-linux-x64.tar.gz`
 - macOS: hiện chạy bằng source qua `run.sh`; packaging `.app`/`.dmg` sẽ cần bổ sung script build riêng
 
+## Tauri/Rust migration
+Repo đã có scaffold Tauri v2 trong `webui/src-tauri` để chuyển dần từ Python desktop shell sang:
+
+```text
+UI: React/Vite hiện tại
+Desktop shell: Tauri
+Backend/core: Rust
+Platform adapters: Rust native modules
+```
+
+Chạy thử Tauri cần Rust toolchain:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cd webui
+npm install
+npm run tauri:dev
+```
+
+Hiện Rust backend đã có skeleton cho settings/smart actions và command bridge tương thích với UI hiện tại. Các phần AI runtime, global hotkey, clipboard, auto-paste và screen capture sẽ được port dần từ Python adapter sang Rust adapter theo từng nền tảng.
+
 Bundle packaged app sẽ mang theo:
 - `webui/dist/`
 - `icons/`

@@ -22,6 +22,9 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { installDesktopApiBridge } from "@/desktop-api"
+
+installDesktopApiBridge()
 
 declare global {
   interface Window {
