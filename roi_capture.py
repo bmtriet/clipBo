@@ -1,4 +1,6 @@
 import base64
+import ctypes
+import ctypes.util
 import io
 import json
 import os
@@ -10,6 +12,9 @@ import tkinter as tk
 from ctypes import POINTER, Structure, byref, c_long, c_void_p
 
 from PIL import ImageGrab, ImageTk
+
+
+SCREEN_RECORDING_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
 
 
 if os.name == "nt":
@@ -105,6 +110,60 @@ def get_current_pointer_position(root: tk.Tk):
         if windll.user32.GetCursorPos(byref(point)):
             return int(point.x), int(point.y)
     return int(root.winfo_pointerx()), int(root.winfo_pointery())
+
+
+def ensure_screen_capture_permission():
+    if sys.platform != "darwin":
+        return True
+
+    try:
+        core_graphics = load_framework("CoreGraphics")
+        preflight = getattr(core_graphics, "CGPreflightScreenCaptureAccess", None)
+        request = getattr(core_graphics, "CGRequestScreenCaptureAccess", None)
+
+        if preflight is not None:
+            preflight.argtypes = []
+            preflight.restype = ctypes.c_bool
+            if preflight():
+                return True
+
+        if request is not None:
+            request.argtypes = []
+            request.restype = ctypes.c_bool
+            if request():
+                return True
+
+        print(
+            "[MACOS] KoDauKoVui cần quyền Screen Recording để chụp vùng màn hình cho Ask by Image.",
+            file=sys.stderr,
+            flush=True,
+        )
+        print(
+            "[MACOS] Hãy bật quyền cho Terminal/iTerm hoặc app KoDauKoVui, rồi chạy lại thao tác capture.",
+            file=sys.stderr,
+            flush=True,
+        )
+        open_screen_recording_settings()
+        return False
+    except Exception:
+        return True
+
+
+def open_screen_recording_settings():
+    try:
+        subprocess.run(
+            ["open", SCREEN_RECORDING_SETTINGS_URL],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=1,
+        )
+    except Exception:
+        pass
+
+
+def load_framework(name: str):
+    path = ctypes.util.find_library(name) or f"/System/Library/Frameworks/{name}.framework/{name}"
+    return ctypes.cdll.LoadLibrary(path)
 
 
 def get_monitor_for_point(monitors, x: int, y: int):
@@ -289,6 +348,8 @@ class RoiCaptureOverlay:
 
 def run_roi_capture():
     try:
+        if not ensure_screen_capture_permission():
+            sys.exit(1)
         overlay = RoiCaptureOverlay()
         result = overlay.run()
         if result is None:

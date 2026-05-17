@@ -4,6 +4,8 @@ import re
 import subprocess
 import sys
 import time
+import ctypes
+import ctypes.util
 from ctypes import Structure, byref, c_bool, c_long, c_ulong, c_void_p, sizeof
 
 import pyperclip
@@ -35,6 +37,9 @@ class PlatformAdapter:
 
     def normalize_hotkey(self, hotkey: str) -> str:
         return hotkey
+
+    def ensure_runtime_permissions(self) -> bool:
+        return True
 
     def get_current_active_window(self):
         return None
@@ -215,10 +220,24 @@ class LinuxPlatformAdapter(PlatformAdapter):
 
 
 class MacOSPlatformAdapter(PlatformAdapter):
+    ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+
     def normalize_hotkey(self, hotkey: str) -> str:
         if hotkey.startswith("<ctrl>+"):
             return hotkey.replace("<ctrl>+", "<cmd>+", 1)
         return hotkey
+
+    def ensure_runtime_permissions(self) -> bool:
+        if self._is_accessibility_trusted(prompt=True):
+            return True
+
+        print(
+            "[MACOS] KoDauKoVui cần quyền Accessibility để dùng global hotkey, đọc selection "
+            "và auto-paste bằng Cmd+C/Cmd+V."
+        )
+        print("[MACOS] Hãy bật quyền cho Terminal/iTerm hoặc app KoDauKoVui, rồi chạy lại ứng dụng.")
+        self._open_accessibility_settings()
+        return False
 
     def get_current_active_window(self):
         try:
@@ -257,6 +276,66 @@ class MacOSPlatformAdapter(PlatformAdapter):
         self.controller.press(char)
         self.controller.release(char)
         self.controller.release(keyboard.Key.cmd)
+
+    def _is_accessibility_trusted(self, prompt: bool = False) -> bool:
+        options = None
+        core_foundation = None
+        try:
+            app_services = self._load_framework("ApplicationServices")
+            app_services.AXIsProcessTrustedWithOptions.argtypes = [c_void_p]
+            app_services.AXIsProcessTrustedWithOptions.restype = c_bool
+
+            if prompt:
+                options, core_foundation = self._create_accessibility_prompt_options()
+
+            return bool(app_services.AXIsProcessTrustedWithOptions(options))
+        except Exception as exc:
+            if self.debug:
+                print(f"[MACOS] Không kiểm tra được quyền Accessibility: {exc}")
+            return False
+        finally:
+            if options and core_foundation:
+                core_foundation.CFRelease(options)
+
+    def _create_accessibility_prompt_options(self):
+        core_foundation = self._load_framework("CoreFoundation")
+        core_foundation.CFStringCreateWithCString.argtypes = [c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+        core_foundation.CFStringCreateWithCString.restype = c_void_p
+        core_foundation.CFDictionaryCreate.argtypes = [
+            c_void_p,
+            ctypes.POINTER(c_void_p),
+            ctypes.POINTER(c_void_p),
+            ctypes.c_long,
+            c_void_p,
+            c_void_p,
+        ]
+        core_foundation.CFDictionaryCreate.restype = c_void_p
+        core_foundation.CFRelease.argtypes = [c_void_p]
+        core_foundation.CFRelease.restype = None
+
+        key = core_foundation.CFStringCreateWithCString(None, b"AXTrustedCheckOptionPrompt", 0x08000100)
+        value = c_void_p.in_dll(core_foundation, "kCFBooleanTrue")
+        keys = (c_void_p * 1)(key)
+        values = (c_void_p * 1)(value)
+        options = core_foundation.CFDictionaryCreate(None, keys, values, 1, None, None)
+        core_foundation.CFRelease(key)
+        return options, core_foundation
+
+    def _open_accessibility_settings(self):
+        try:
+            subprocess.run(
+                ["open", self.ACCESSIBILITY_SETTINGS_URL],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1,
+            )
+        except Exception:
+            pass
+
+    @staticmethod
+    def _load_framework(name: str):
+        path = ctypes.util.find_library(name) or f"/System/Library/Frameworks/{name}.framework/{name}"
+        return ctypes.cdll.LoadLibrary(path)
 
 
 if os.name == "nt":

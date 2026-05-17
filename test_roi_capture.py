@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from roi_capture import get_monitor_for_point, parse_xrandr_listmonitors
+from roi_capture import ensure_screen_capture_permission, get_monitor_for_point, parse_xrandr_listmonitors
 
 
 class RoiCaptureTests(unittest.TestCase):
@@ -39,6 +40,10 @@ class RoiCaptureTests(unittest.TestCase):
         chosen = get_monitor_for_point(monitors, -10, -10)
 
         self.assertEqual(chosen, monitors[0])
+
+    def test_screen_capture_permission_is_noop_off_macos(self):
+        with patch("roi_capture.sys.platform", "linux"):
+            self.assertTrue(ensure_screen_capture_permission())
 
 
 if __name__ == "__main__":

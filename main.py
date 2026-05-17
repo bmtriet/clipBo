@@ -894,6 +894,11 @@ def main():
             return
 
     reload_runtime_settings(rebuild_listener=False)
+    permissions_ready = PLATFORM.ensure_runtime_permissions()
+    if not permissions_ready:
+        print("[MACOS] Đã mở trang cấp quyền. Vui lòng chạy lại KoDauKoVui sau khi bật quyền.")
+        return
+
     WEBVIEW_BROKER.start()
     HOTKEY_MANAGER.rebuild()
     print_startup_banner()

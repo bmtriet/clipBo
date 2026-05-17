@@ -18,6 +18,22 @@ class PlatformAdapterTests(unittest.TestCase):
         adapter = MacOSPlatformAdapter(controller=None)
         self.assertEqual(adapter.normalize_hotkey("<cmd>+space"), "<cmd>+space")
 
+    def test_macos_permissions_ready_when_accessibility_is_trusted(self):
+        adapter = MacOSPlatformAdapter(controller=None)
+        adapter._is_accessibility_trusted = lambda prompt=True: True
+        adapter._open_accessibility_settings = lambda: self.fail("Settings should not open when trusted")
+
+        self.assertTrue(adapter.ensure_runtime_permissions())
+
+    def test_macos_permissions_prompt_and_open_settings_when_untrusted(self):
+        adapter = MacOSPlatformAdapter(controller=None)
+        opened = []
+        adapter._is_accessibility_trusted = lambda prompt=True: False
+        adapter._open_accessibility_settings = lambda: opened.append(True)
+
+        self.assertFalse(adapter.ensure_runtime_permissions())
+        self.assertEqual(opened, [True])
+
     def test_windows_blocks_cross_privilege_interaction(self):
         adapter = WindowsPlatformAdapter(controller=None)
         adapter._is_current_process_elevated = lambda: False

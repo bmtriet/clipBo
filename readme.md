@@ -41,7 +41,9 @@ chmod +x run.sh
 ./run.sh
 ```
 
-Lần đầu chạy trên macOS, vào **System Settings → Privacy & Security → Accessibility** và bật quyền cho Terminal/iTerm hoặc app packaged. Hotkey popup mặc định `<ctrl>+'` sẽ được tự map thành `<cmd>+'` trên macOS.
+Lần đầu chạy trên macOS, app sẽ tự yêu cầu quyền Accessibility và mở **System Settings → Privacy & Security → Accessibility**. Hãy bật quyền cho Terminal/iTerm hoặc app packaged, rồi chạy lại app. Hotkey popup mặc định `<ctrl>+'` sẽ được tự map thành `<cmd>+'` trên macOS.
+
+Khi dùng **Ask by Image** với capture vùng màn hình, macOS có thể yêu cầu thêm quyền Screen Recording. App sẽ tự gọi prompt và mở đúng trang quyền nếu quyền này chưa được cấp.
 
 ### Chạy tay
 ```bash
