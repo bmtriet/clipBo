@@ -8,10 +8,12 @@ import re
 import subprocess
 import sys
 import traceback
-import tkinter as tk
 from ctypes import POINTER, Structure, byref, c_long, c_void_p
 
-from PIL import ImageGrab, ImageTk
+
+tk = None
+ImageGrab = None
+ImageTk = None
 
 
 SCREEN_RECORDING_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
@@ -104,7 +106,7 @@ def get_windows_monitors():
     return monitors
 
 
-def get_current_pointer_position(root: tk.Tk):
+def get_current_pointer_position(root):
     if os.name == "nt":
         point = POINT()
         if windll.user32.GetCursorPos(byref(point)):
@@ -164,6 +166,36 @@ def open_screen_recording_settings():
 def load_framework(name: str):
     path = ctypes.util.find_library(name) or f"/System/Library/Frameworks/{name}.framework/{name}"
     return ctypes.cdll.LoadLibrary(path)
+
+
+def ensure_tk_runtime():
+    global tk, ImageGrab, ImageTk
+    if tk is not None and ImageGrab is not None and ImageTk is not None:
+        return True
+
+    try:
+        import tkinter as tk_module
+        from PIL import ImageGrab as image_grab_module
+        from PIL import ImageTk as image_tk_module
+    except ModuleNotFoundError as exc:
+        if exc.name == "_tkinter":
+            print(
+                "[MACOS] Python hiện tại thiếu Tk runtime nên không mở được cửa sổ chọn vùng màn hình.",
+                file=sys.stderr,
+                flush=True,
+            )
+            print(
+                "[MACOS] Nếu dùng Homebrew Python 3.12, hãy cài: brew install python-tk@3.12",
+                file=sys.stderr,
+                flush=True,
+            )
+            return False
+        raise
+
+    tk = tk_module
+    ImageGrab = image_grab_module
+    ImageTk = image_tk_module
+    return True
 
 
 def get_monitor_for_point(monitors, x: int, y: int):
@@ -349,6 +381,8 @@ class RoiCaptureOverlay:
 def run_roi_capture():
     try:
         if not ensure_screen_capture_permission():
+            sys.exit(1)
+        if not ensure_tk_runtime():
             sys.exit(1)
         overlay = RoiCaptureOverlay()
         result = overlay.run()

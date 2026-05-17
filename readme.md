@@ -45,6 +45,8 @@ Lần đầu chạy trên macOS, app sẽ tự yêu cầu quyền Accessibility 
 
 Khi dùng **Ask by Image** với capture vùng màn hình, macOS có thể yêu cầu thêm quyền Screen Recording. App sẽ tự gọi prompt và mở đúng trang quyền nếu quyền này chưa được cấp.
 
+Nếu dùng Homebrew Python và gặp lỗi thiếu `_tkinter` khi capture vùng màn hình, cài thêm Tk runtime tương ứng, ví dụ `brew install python-tk@3.12`.
+
 ### Chạy tay
 ```bash
 python3 -m venv venv

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from roi_capture import ensure_screen_capture_permission, get_monitor_for_point, parse_xrandr_listmonitors
+from roi_capture import ensure_screen_capture_permission, ensure_tk_runtime, get_monitor_for_point, parse_xrandr_listmonitors
 
 
 class RoiCaptureTests(unittest.TestCase):
@@ -44,6 +44,22 @@ class RoiCaptureTests(unittest.TestCase):
     def test_screen_capture_permission_is_noop_off_macos(self):
         with patch("roi_capture.sys.platform", "linux"):
             self.assertTrue(ensure_screen_capture_permission())
+
+    def test_tk_runtime_reports_missing_homebrew_tk(self):
+        real_import = __import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "tkinter":
+                raise ModuleNotFoundError("No module named '_tkinter'", name="_tkinter")
+            return real_import(name, *args, **kwargs)
+
+        with (
+            patch("builtins.__import__", fake_import),
+            patch("roi_capture.tk", None),
+            patch("roi_capture.ImageGrab", None),
+            patch("roi_capture.ImageTk", None),
+        ):
+            self.assertFalse(ensure_tk_runtime())
 
 
 if __name__ == "__main__":
