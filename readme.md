@@ -111,6 +111,7 @@ Chạy thử Tauri cần Rust toolchain:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+. "$HOME/.cargo/env"
 cd webui
 npm install
 npm run tauri:dev

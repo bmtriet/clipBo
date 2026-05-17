@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-    sync::Mutex,
-};
+use std::{fs, path::PathBuf, sync::Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,8 +6,6 @@ use crate::actions::{default_builtin_actions, default_smart_actions, BuiltinActi
 
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsError {
-    #[error("Could not resolve a writable app data directory.")]
-    MissingDataDir,
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("JSON error: {0}")]
@@ -64,7 +58,8 @@ pub struct AppState {
 
 impl AppState {
     pub fn load() -> Self {
-        let data_dir = app_data_dir().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let data_dir = app_data_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let snapshot = read_snapshot(&data_dir).unwrap_or_else(|_| SettingsSnapshot {
             settings: default_settings(),
             smart_actions: default_smart_actions(),
@@ -81,12 +76,21 @@ impl AppState {
         self.store.lock().expect("settings state poisoned").clone()
     }
 
-    pub fn save_snapshot(&self, snapshot: SettingsSnapshot) -> Result<SettingsSnapshot, SettingsError> {
+    pub fn save_snapshot(
+        &self,
+        snapshot: SettingsSnapshot,
+    ) -> Result<SettingsSnapshot, SettingsError> {
         validate_snapshot(&snapshot)?;
         fs::create_dir_all(&self.data_dir)?;
         write_json(self.data_dir.join("settings.json"), &snapshot.settings)?;
-        write_json(self.data_dir.join("smart_actions.json"), &snapshot.smart_actions)?;
-        write_json(self.data_dir.join("builtin_actions.json"), &snapshot.builtin_actions)?;
+        write_json(
+            self.data_dir.join("smart_actions.json"),
+            &snapshot.smart_actions,
+        )?;
+        write_json(
+            self.data_dir.join("builtin_actions.json"),
+            &snapshot.builtin_actions,
+        )?;
 
         let mut store = self.store.lock().expect("settings state poisoned");
         *store = snapshot.clone();
@@ -114,8 +118,10 @@ fn app_data_dir() -> Option<PathBuf> {
 
 fn read_snapshot(data_dir: &PathBuf) -> Result<SettingsSnapshot, SettingsError> {
     let settings = read_json(data_dir.join("settings.json")).unwrap_or_else(|_| default_settings());
-    let smart_actions = read_json(data_dir.join("smart_actions.json")).unwrap_or_else(|_| default_smart_actions());
-    let builtin_actions = read_json(data_dir.join("builtin_actions.json")).unwrap_or_else(|_| default_builtin_actions());
+    let smart_actions =
+        read_json(data_dir.join("smart_actions.json")).unwrap_or_else(|_| default_smart_actions());
+    let builtin_actions = read_json(data_dir.join("builtin_actions.json"))
+        .unwrap_or_else(|_| default_builtin_actions());
     let snapshot = SettingsSnapshot {
         settings,
         smart_actions,
@@ -137,7 +143,9 @@ fn write_json<T: Serialize>(path: PathBuf, value: &T) -> Result<(), SettingsErro
 
 fn validate_snapshot(snapshot: &SettingsSnapshot) -> Result<(), SettingsError> {
     if snapshot.settings.hotkey_popup.trim().is_empty() {
-        return Err(SettingsError::Validation("HOTKEY_POPUP cannot be empty.".to_string()));
+        return Err(SettingsError::Validation(
+            "HOTKEY_POPUP cannot be empty.".to_string(),
+        ));
     }
     validate_language(&snapshot.settings.ui_language)?;
     validate_action_keys(&snapshot.smart_actions, &snapshot.builtin_actions)?;
@@ -147,22 +155,35 @@ fn validate_snapshot(snapshot: &SettingsSnapshot) -> Result<(), SettingsError> {
 fn validate_language(language: &str) -> Result<(), SettingsError> {
     match language {
         "en" | "vi" | "zh" => Ok(()),
-        _ => Err(SettingsError::Validation("UI_LANGUAGE must be one of: en, vi, zh.".to_string())),
+        _ => Err(SettingsError::Validation(
+            "UI_LANGUAGE must be one of: en, vi, zh.".to_string(),
+        )),
     }
 }
 
-fn validate_action_keys(smart_actions: &[SmartAction], builtin_actions: &[BuiltinAction]) -> Result<(), SettingsError> {
+fn validate_action_keys(
+    smart_actions: &[SmartAction],
+    builtin_actions: &[BuiltinAction],
+) -> Result<(), SettingsError> {
     let mut keys = std::collections::HashSet::new();
     for key in smart_actions
         .iter()
         .map(|action| action.hotkey.trim().to_lowercase())
-        .chain(builtin_actions.iter().map(|action| action.hotkey.trim().to_lowercase()))
+        .chain(
+            builtin_actions
+                .iter()
+                .map(|action| action.hotkey.trim().to_lowercase()),
+        )
     {
         if key.chars().count() != 1 {
-            return Err(SettingsError::Validation("Action hotkeys must be a single character.".to_string()));
+            return Err(SettingsError::Validation(
+                "Action hotkeys must be a single character.".to_string(),
+            ));
         }
         if !keys.insert(key) {
-            return Err(SettingsError::Validation("Action hotkeys must be unique.".to_string()));
+            return Err(SettingsError::Validation(
+                "Action hotkeys must be unique.".to_string(),
+            ));
         }
     }
     Ok(())

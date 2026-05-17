@@ -1,26 +1,10 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::State;
 
 use crate::{
     platform,
     settings::{AppState, SaveSnapshotResponse, SettingsSnapshot},
 };
-
-#[derive(Debug, Deserialize)]
-pub struct ChatSession {
-    pub kind: String,
-    pub title: String,
-    #[serde(default)]
-    pub messages: Vec<ChatMessage>,
-    #[serde(default)]
-    pub latest_reply: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-}
 
 #[derive(Debug, Serialize)]
 pub struct ChatResponse {

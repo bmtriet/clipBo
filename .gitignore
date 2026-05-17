@@ -9,3 +9,4 @@ learned.json
 build/
 dist/
 webui/src-tauri/target/
+webui/src-tauri/gen/
