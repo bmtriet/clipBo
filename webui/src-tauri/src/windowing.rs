@@ -1,12 +1,9 @@
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde_json::json;
 use tauri::{
-    AppHandle, LogicalSize, Manager, Size, UserAttentionType, WebviewUrl, WebviewWindow,
+    AppHandle, LogicalPosition, LogicalSize, Manager, Size, UserAttentionType, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
-
-#[cfg(target_os = "linux")]
-use tauri::PhysicalPosition;
 
 #[cfg(target_os = "linux")]
 use crate::native;
@@ -132,25 +129,17 @@ fn apply_popup_placement(
 
 #[cfg(target_os = "linux")]
 fn popup_position_for_target(
-    window: &WebviewWindow,
+    _window: &WebviewWindow,
     target_window_id: Option<&str>,
     width: f64,
     height: f64,
-) -> Option<PhysicalPosition<i32>> {
-    let monitor = if let Some(center) = native::target_window_center(target_window_id) {
-        window.monitor_from_point(center.x, center.y).ok().flatten()
-    } else {
-        None
-    }
-    .or_else(|| window.current_monitor().ok().flatten())
-    .or_else(|| window.primary_monitor().ok().flatten())?;
-
-    let work_area = monitor.work_area();
-    let popup_width = (width * monitor.scale_factor()).round() as i32;
-    let popup_height = (height * monitor.scale_factor()).round() as i32;
-    let x = work_area.position.x + ((work_area.size.width as i32 - popup_width).max(0) / 2);
-    let y = work_area.position.y + ((work_area.size.height as i32 - popup_height).max(0) / 2);
-    Some(PhysicalPosition::new(x, y))
+) -> Option<LogicalPosition<f64>> {
+    native::popup_position_for_target(
+        target_window_id,
+        width.round() as i32,
+        height.round() as i32,
+    )
+    .map(|point| LogicalPosition::new(point.x, point.y))
 }
 
 fn page_url(page: Page, ui_language: &str, payload: serde_json::Value) -> String {

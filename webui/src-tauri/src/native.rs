@@ -24,6 +24,14 @@ pub struct ScreenPoint {
     pub y: f64,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ScreenRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
 enum ClipboardSnapshot {
     Text(String),
     Image(ImageData<'static>),
@@ -105,6 +113,34 @@ pub fn target_window_center(target_window_id: Option<&str>) -> Option<ScreenPoin
 
     let _ = target_window_id;
     None
+}
+
+pub fn popup_position_for_target(
+    target_window_id: Option<&str>,
+    popup_width: i32,
+    popup_height: i32,
+) -> Option<ScreenPoint> {
+    #[cfg(target_os = "linux")]
+    {
+        let center = target_window_center(target_window_id)?;
+        let screen = screen_for_point(center)?;
+        let x = screen.x + ((screen.width - popup_width).max(0) / 2);
+        let y = screen.y + ((screen.height - popup_height).max(0) / 2);
+        Some(ScreenPoint {
+            x: x as f64,
+            y: y as f64,
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+    #[cfg(not(target_os = "linux"))]
+    let _ = target_window_id;
+    #[cfg(not(target_os = "linux"))]
+    let _ = popup_width;
+    #[cfg(not(target_os = "linux"))]
+    let _ = popup_height;
+    None
+    }
 }
 
 pub fn restore_focus(window_id: Option<&str>) {
@@ -353,6 +389,58 @@ fn command_exists(name: &str) -> bool {
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn screen_for_point(point: ScreenPoint) -> Option<ScreenRect> {
+    let output = Command::new("xrandr").arg("--query").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let mut matched = None;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let Some(rect) = parse_xrandr_screen_rect(line) else {
+            continue;
+        };
+        let within_x = point.x >= rect.x as f64 && point.x < (rect.x + rect.width) as f64;
+        let within_y = point.y >= rect.y as f64 && point.y < (rect.y + rect.height) as f64;
+        if within_x && within_y {
+            return Some(rect);
+        }
+        if matched.is_none() {
+            matched = Some(rect);
+        }
+    }
+    matched
+}
+
+#[cfg(target_os = "linux")]
+fn parse_xrandr_screen_rect(line: &str) -> Option<ScreenRect> {
+    let token = line.split_whitespace().find(|part| {
+        let part = *part;
+        part.contains('x')
+            && part.contains('+')
+            && part
+                .chars()
+                .all(|ch| ch.is_ascii_digit() || matches!(ch, 'x' | '+' | '-'))
+    })?;
+
+    let (size_part, x_part, y_part) = split_geometry_token(token)?;
+    let (width, height) = size_part.split_once('x')?;
+    Some(ScreenRect {
+        x: x_part.parse().ok()?,
+        y: y_part.parse().ok()?,
+        width: width.parse().ok()?,
+        height: height.parse().ok()?,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn split_geometry_token(token: &str) -> Option<(&str, &str, &str)> {
+    let first_plus = token.find('+')?;
+    let second_plus = token[first_plus + 1..].find('+')? + first_plus + 1;
+    Some((&token[..first_plus], &token[first_plus + 1..second_plus], &token[second_plus + 1..]))
 }
 
 fn press_copy_shortcut() -> Result<(), NativeError> {
