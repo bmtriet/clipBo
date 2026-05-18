@@ -18,6 +18,18 @@ pub enum NativeError {
     Io(#[from] std::io::Error),
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ScreenPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+enum ClipboardSnapshot {
+    Text(String),
+    Image(ImageData<'static>),
+    Empty,
+}
+
 pub fn active_window_id() -> Option<String> {
     #[cfg(target_os = "macos")]
     {
@@ -51,6 +63,50 @@ pub fn active_window_id() -> Option<String> {
     None
 }
 
+pub fn target_window_center(target_window_id: Option<&str>) -> Option<ScreenPoint> {
+    #[cfg(target_os = "linux")]
+    {
+        let window_id = target_window_id?.trim();
+        if window_id.is_empty() {
+            return None;
+        }
+        let output = Command::new("xdotool")
+            .args(["getwindowgeometry", "--shell", window_id])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        let mut x = None;
+        let mut y = None;
+        let mut width = None;
+        let mut height = None;
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+            match key.trim() {
+                "X" => x = value.trim().parse::<f64>().ok(),
+                "Y" => y = value.trim().parse::<f64>().ok(),
+                "WIDTH" => width = value.trim().parse::<f64>().ok(),
+                "HEIGHT" => height = value.trim().parse::<f64>().ok(),
+                _ => {}
+            }
+        }
+
+        if let (Some(x), Some(y), Some(width), Some(height)) = (x, y, width, height) {
+            return Some(ScreenPoint {
+                x: x + (width / 2.0),
+                y: y + (height / 2.0),
+            });
+        }
+    }
+
+    let _ = target_window_id;
+    None
+}
+
 pub fn restore_focus(window_id: Option<&str>) {
     #[cfg(target_os = "macos")]
     if let Some(window_id) = window_id.filter(|id| !id.trim().is_empty()) {
@@ -73,7 +129,7 @@ pub fn restore_focus(window_id: Option<&str>) {
 
 pub fn copy_selected_text(target_window_id: Option<&str>) -> Result<String, NativeError> {
     restore_focus(target_window_id);
-    let old_clipboard = read_clipboard_text().unwrap_or_default();
+    let old_clipboard = snapshot_clipboard();
     press_copy_shortcut()?;
     thread::sleep(Duration::from_millis(80));
     let mut selected = read_clipboard_text().unwrap_or_default();
@@ -82,14 +138,8 @@ pub fn copy_selected_text(target_window_id: Option<&str>) -> Result<String, Nati
         thread::sleep(Duration::from_millis(40));
         selected = read_clipboard_text().unwrap_or_default();
     }
-    let text = if selected.trim().is_empty() {
-        old_clipboard.clone()
-    } else {
-        selected
-    };
-    if !old_clipboard.is_empty() {
-        restore_clipboard_text(&old_clipboard);
-    }
+    let text = selected;
+    restore_clipboard(old_clipboard);
     Ok(text.trim().to_string())
 }
 
@@ -120,6 +170,12 @@ pub fn read_clipboard_image() -> Result<Option<ImagePayload>, NativeError> {
         }),
         region: None,
     }))
+}
+
+pub fn clipboard_has_text() -> bool {
+    read_clipboard_text()
+        .map(|text| !text.trim().is_empty())
+        .unwrap_or(false)
 }
 
 pub fn capture_roi() -> Result<ImagePayload, NativeError> {
@@ -259,6 +315,34 @@ fn read_clipboard_text() -> Result<String, NativeError> {
 fn restore_clipboard_text(text: &str) {
     if let Ok(mut clipboard) = Clipboard::new() {
         let _ = clipboard.set_text(text.to_string());
+    }
+}
+
+fn snapshot_clipboard() -> ClipboardSnapshot {
+    let Ok(mut clipboard) = Clipboard::new() else {
+        return ClipboardSnapshot::Empty;
+    };
+
+    if let Ok(text) = clipboard.get_text() {
+        return ClipboardSnapshot::Text(text);
+    }
+
+    if let Ok(image) = clipboard.get_image() {
+        return ClipboardSnapshot::Image(image);
+    }
+
+    ClipboardSnapshot::Empty
+}
+
+fn restore_clipboard(snapshot: ClipboardSnapshot) {
+    match snapshot {
+        ClipboardSnapshot::Text(text) => restore_clipboard_text(&text),
+        ClipboardSnapshot::Image(image) => {
+            if let Ok(mut clipboard) = Clipboard::new() {
+                let _ = clipboard.set_image(image);
+            }
+        }
+        ClipboardSnapshot::Empty => {}
     }
 }
 

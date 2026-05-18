@@ -81,8 +81,9 @@ impl AppState {
 
     pub fn save_snapshot(
         &self,
-        snapshot: SettingsSnapshot,
+        mut snapshot: SettingsSnapshot,
     ) -> Result<SettingsSnapshot, SettingsError> {
+        snapshot.settings.hotkey_popup = normalize_popup_hotkey(&snapshot.settings.hotkey_popup);
         validate_snapshot(&snapshot)?;
         fs::create_dir_all(&self.data_dir)?;
         write_json(self.data_dir.join("settings.json"), &snapshot.settings)?;
@@ -117,7 +118,7 @@ pub fn default_settings() -> GeneralSettings {
         openai_api_key: String::new(),
         openai_model: "gpt-4o-mini".to_string(),
         openai_api_base: "https://api.openai.com/v1".to_string(),
-        hotkey_popup: "<ctrl>+'".to_string(),
+        hotkey_popup: default_popup_hotkey(),
         ui_language: "en".to_string(),
         debug: false,
     }
@@ -128,7 +129,8 @@ fn app_data_dir() -> Option<PathBuf> {
 }
 
 fn read_snapshot(data_dir: &PathBuf) -> Result<SettingsSnapshot, SettingsError> {
-    let settings = read_json(data_dir.join("settings.json")).unwrap_or_else(|_| default_settings());
+    let mut settings = read_json(data_dir.join("settings.json")).unwrap_or_else(|_| default_settings());
+    settings.hotkey_popup = normalize_popup_hotkey(&settings.hotkey_popup);
     let smart_actions =
         read_json(data_dir.join("smart_actions.json")).unwrap_or_else(|_| default_smart_actions());
     let builtin_actions = read_json(data_dir.join("builtin_actions.json"))
@@ -197,7 +199,7 @@ fn import_legacy_settings(values: &HashMap<String, String>) -> GeneralSettings {
         hotkey_popup: values
             .get("HOTKEY_POPUP")
             .filter(|value| !value.trim().is_empty())
-            .cloned()
+            .map(|value| normalize_popup_hotkey(value))
             .unwrap_or(default.hotkey_popup),
         ui_language: values
             .get("UI_LANGUAGE")
@@ -272,6 +274,26 @@ fn validate_snapshot(snapshot: &SettingsSnapshot) -> Result<(), SettingsError> {
     validate_language(&snapshot.settings.ui_language)?;
     validate_action_keys(&snapshot.smart_actions, &snapshot.builtin_actions)?;
     Ok(())
+}
+
+fn default_popup_hotkey() -> String {
+    if cfg!(target_os = "linux") {
+        "<ctrl>+`".to_string()
+    } else {
+        "<ctrl>+'".to_string()
+    }
+}
+
+fn normalize_popup_hotkey(value: &str) -> String {
+    let trimmed = value.trim();
+    if cfg!(target_os = "linux") {
+        match trimmed {
+            "<ctrl>+'" | "CommandOrControl+Quote" | "CommandOrControl+'" => "<ctrl>+`".to_string(),
+            _ => trimmed.to_string(),
+        }
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn normalize_provider(value: Option<&String>, default: &str) -> String {

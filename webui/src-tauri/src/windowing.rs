@@ -1,6 +1,15 @@
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde_json::json;
-use tauri::{AppHandle, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, LogicalSize, Manager, Size, UserAttentionType, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
+
+#[cfg(target_os = "linux")]
+use tauri::PhysicalPosition;
+
+#[cfg(target_os = "linux")]
+use crate::native;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Page {
@@ -63,6 +72,7 @@ pub fn show_page(
     page: Page,
     ui_language: &str,
     payload: serde_json::Value,
+    target_window_id: Option<&str>,
 ) -> Result<WebviewWindow, String> {
     let url = page_url(page, ui_language, payload);
     let (width, height) = page.size();
@@ -75,23 +85,72 @@ pub fn show_page(
             .map_err(|err| err.to_string())?;
         window
     } else {
-        WebviewWindowBuilder::new(app, page.label(), WebviewUrl::App(url.into()))
+        let mut builder = WebviewWindowBuilder::new(app, page.label(), WebviewUrl::App(url.into()))
             .title(page.title())
             .inner_size(width, height)
             .resizable(page.resizable())
             .decorations(page.decorations())
             .always_on_top(matches!(page, Page::Popup))
-            .build()
-            .map_err(|err| err.to_string())?
+            .visible_on_all_workspaces(matches!(page, Page::Popup));
+        if !matches!(page, Page::Popup) || !cfg!(target_os = "linux") {
+            builder = builder.center();
+        }
+        builder.build().map_err(|err| err.to_string())?
     };
     let _ = window.show();
     let _ = window.unminimize();
+    if matches!(page, Page::Popup) {
+        apply_popup_placement(&window, target_window_id, width, height);
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_visible_on_all_workspaces(true);
+        let _ = window.request_user_attention(Some(UserAttentionType::Critical));
+    }
     let _ = window.set_focus();
     Ok(window)
 }
 
 pub fn open_settings_page(app: &AppHandle, ui_language: &str) -> Result<(), String> {
-    show_page(app, Page::Settings, ui_language, json!({})).map(|_| ())
+    show_page(app, Page::Settings, ui_language, json!({}), None).map(|_| ())
+}
+
+fn apply_popup_placement(
+    window: &WebviewWindow,
+    target_window_id: Option<&str>,
+    width: f64,
+    height: f64,
+) {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(position) = popup_position_for_target(window, target_window_id, width, height) {
+            let _ = window.set_position(position);
+            return;
+        }
+    }
+
+    let _ = window.center();
+}
+
+#[cfg(target_os = "linux")]
+fn popup_position_for_target(
+    window: &WebviewWindow,
+    target_window_id: Option<&str>,
+    width: f64,
+    height: f64,
+) -> Option<PhysicalPosition<i32>> {
+    let monitor = if let Some(center) = native::target_window_center(target_window_id) {
+        window.monitor_from_point(center.x, center.y).ok().flatten()
+    } else {
+        None
+    }
+    .or_else(|| window.current_monitor().ok().flatten())
+    .or_else(|| window.primary_monitor().ok().flatten())?;
+
+    let work_area = monitor.work_area();
+    let popup_width = (width * monitor.scale_factor()).round() as i32;
+    let popup_height = (height * monitor.scale_factor()).round() as i32;
+    let x = work_area.position.x + ((work_area.size.width as i32 - popup_width).max(0) / 2);
+    let y = work_area.position.y + ((work_area.size.height as i32 - popup_height).max(0) / 2);
+    Some(PhysicalPosition::new(x, y))
 }
 
 fn page_url(page: Page, ui_language: &str, payload: serde_json::Value) -> String {

@@ -58,6 +58,14 @@ pub enum AiError {
     Provider(String),
 }
 
+pub fn has_configured_token(settings: &GeneralSettings) -> bool {
+    if settings.ai_provider == "openai" {
+        !settings.openai_api_key.trim().is_empty()
+    } else {
+        !settings.gemini_api_key.trim().is_empty()
+    }
+}
+
 pub async fn call_text(settings: &GeneralSettings, prompt: &str) -> Result<String, AiError> {
     if settings.ai_provider == "openai" {
         call_openai_text(settings, prompt).await

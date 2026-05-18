@@ -1,6 +1,7 @@
 mod actions;
 mod ai;
 mod commands;
+mod launcher;
 mod native;
 mod platform;
 mod prompts;
@@ -76,10 +77,20 @@ fn normalize_shortcut(value: &str) -> String {
         .replace("<ctrl>+", "CommandOrControl+")
         .replace("<cmd>+", "Command+")
         .replace("<alt>+", "Alt+")
-        .replace("<shift>+", "Shift+")
-        .replace("'", "Quote");
+        .replace("<shift>+", "Shift+");
+
+    if cfg!(target_os = "linux") {
+        normalized = normalized.replace("'", "Backquote");
+    } else {
+        normalized = normalized.replace("'", "Quote");
+    }
+
     if normalized.is_empty() {
-        normalized = "CommandOrControl+Quote".to_string();
+        normalized = if cfg!(target_os = "linux") {
+            "CommandOrControl+Backquote".to_string()
+        } else {
+            "CommandOrControl+Quote".to_string()
+        };
     }
     normalized
 }

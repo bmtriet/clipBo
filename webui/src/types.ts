@@ -2,6 +2,9 @@ export type PageKind = "ask" | "popup" | "settings" | "chat" | "image_source"
 export type UiLanguage = "en" | "vi" | "zh"
 export type ResponseMode = "paste" | "chat"
 export type BuiltinKind = "ai_prompt" | "image_ask"
+export type LauncherCategory = "translate" | "ai" | "text" | "image" | "other"
+export type LauncherRunMode = "direct" | "prompt" | "config"
+export type PopupSectionId = "quick_translate" | "ai_tools" | "text_tools" | "other_actions"
 
 export type GeneralSettings = {
   AI_PROVIDER: "gemini" | "openai"
@@ -80,6 +83,37 @@ export type ChatApiResponse = {
   ok: boolean
   error?: string
   session?: ChatSession
+}
+
+export type PopupContext = {
+  has_selected_text: boolean
+  has_clipboard_image: boolean
+  has_clipboard_text: boolean
+}
+
+export type PopupItem = {
+  id: string
+  label: string
+  short_label?: string
+  shortcut: string
+  category: LauncherCategory
+  context_tags: string[]
+  priority_base: number
+  run_mode: LauncherRunMode
+  kind?: BuiltinKind
+  is_builtin: boolean
+  ask_before_run: boolean
+  return_with_source: boolean
+}
+
+export type PopupSection = {
+  id: PopupSectionId
+  items: PopupItem[]
+}
+
+export type PopupPayload = {
+  context: PopupContext
+  sections: PopupSection[]
 }
 
 export type DesktopApi = {

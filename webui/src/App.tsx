@@ -28,7 +28,7 @@ export default function App() {
   const [settings, setSettings] = useState<GeneralSettings>(defaultSettings)
   const [actions, setActions] = useState<SmartAction[]>([])
   const [builtinActions, setBuiltinActions] = useState<BuiltinAction[]>([])
-  const requiresSettingsSnapshot = page === "popup" || page === "settings"
+  const requiresSettingsSnapshot = page === "settings"
   const [loading, setLoading] = useState(requiresSettingsSnapshot)
   const [loadError, setLoadError] = useState("")
 
@@ -84,7 +84,7 @@ export default function App() {
   }
 
   if (page === "popup") {
-    return <PopupPage t={t} uiLang={lang} changeLang={changeLang} actions={actions} builtinActions={builtinActions} />
+    return <PopupPage t={t} />
   }
 
   if (page === "settings") {

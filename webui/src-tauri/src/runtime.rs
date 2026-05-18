@@ -8,6 +8,7 @@ use tokio::sync::oneshot;
 use crate::{
     actions::{AI_PROMPT_ID, IMAGE_ASK_ID},
     ai::{self, ChatMessage, ChatSession, ImagePayload},
+    launcher,
     native, prompts,
     settings::{AppState, SettingsSnapshot},
     windowing::{self, Page},
@@ -79,13 +80,15 @@ pub async fn open_popup(
 ) -> Result<(), String> {
     let target_window_id = native::active_window_id();
     let snapshot = settings_state.snapshot();
+    let payload = launcher::build_popup_payload(settings_state.inner(), &snapshot, target_window_id.as_deref());
     let (sender, receiver) = oneshot::channel();
     runtime.set_pending(Page::Popup, sender);
     windowing::show_page(
         &app,
         Page::Popup,
         &snapshot.settings.ui_language,
-        json!({}),
+        serde_json::to_value(payload).unwrap_or_else(|_| json!({})),
+        target_window_id.as_deref(),
     )?;
     let response = receiver.await        .map_err(|_| "Popup was closed.".to_string())?;
 
@@ -113,6 +116,9 @@ pub async fn process_action(
     action_id: String,
     target_window_id: Option<String>,
 ) -> Result<(), String> {
+    if !ensure_ai_ready(&app, &snapshot)? {
+        return Ok(());
+    }
     if action_id == AI_PROMPT_ID {
         process_ai_prompt(app, settings_state, runtime, snapshot, target_window_id).await
     } else if action_id == IMAGE_ASK_ID {
@@ -172,6 +178,7 @@ async fn process_smart_action(
     }
     native::paste_text(&result, target_window_id.as_deref()).map_err(|err| err.to_string())?;
     save_history(settings_state, &selected_text, &result);
+    launcher::note_translation_action(settings_state, &action.id);
     Ok(())
 }
 
@@ -226,7 +233,7 @@ async fn process_ai_prompt(
             target_window_id,
         };
         runtime.set_chat_session(session);
-        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}))?;
+        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}), None)?;
         return Ok(());
     }
     let prompt = prompts::build_ai_prompt_first_turn(&brain_context(settings_state), &selected_text, &ask.prompt);
@@ -280,7 +287,7 @@ async fn process_image_ask(
             target_window_id,
         };
         runtime.set_chat_session(session);
-        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}))?;
+        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}), None)?;
         return Ok(());
     }
     let prompt = prompts::build_image_question_prompt(&brain_context(settings_state), &ask.prompt);
@@ -310,6 +317,7 @@ async fn capture_image_context(
             Page::ImageSource,
             &snapshot.settings.ui_language,
             json!({ "title": "Ask by Image" }),
+            None,
         )?;
         let response = receiver
             .await
@@ -341,7 +349,7 @@ async fn ask_user(
 ) -> Result<AskResult, String> {
     let (sender, receiver) = oneshot::channel();
     runtime.set_pending(Page::Ask, sender);
-    windowing::show_page(app, Page::Ask, ui_language, payload)?;
+    windowing::show_page(app, Page::Ask, ui_language, payload, None)?;
     let response = receiver
         .await
         .map_err(|_| "User cancelled input.".to_string())?;
@@ -500,6 +508,14 @@ fn save_history(settings_state: &AppState, original: &str, result: &str) {
         }
         Err(err) => eprintln!("[HISTORY] Failed to serialize history: {err}"),
     }
+}
+
+fn ensure_ai_ready(app: &AppHandle, snapshot: &SettingsSnapshot) -> Result<bool, String> {
+    if ai::has_configured_token(&snapshot.settings) {
+        return Ok(true);
+    }
+    windowing::open_settings_page(app, &snapshot.settings.ui_language)?;
+    Ok(false)
 }
 
 fn chat_ok(session: ChatSession) -> ChatResponse {

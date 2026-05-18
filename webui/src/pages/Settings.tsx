@@ -45,6 +45,7 @@ export function SettingsPage({
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
   const [editingAction, setEditingAction] = useState<SmartAction | null>(null)
+  const vietnameseMarksActionId = "add-vietnamese-marks"
 
   const updateField = <K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
     onSettingsChange((prev) => ({ ...prev, [key]: value }))
@@ -60,6 +61,14 @@ export function SettingsPage({
   const hasInvalidKey = normalizedKeys.all.some((key) => key.length !== 1)
   const hasBlankName = actions.some((action) => !action.name.trim())
   const hasBlankPrompt = actions.some((action) => !action.prompt.trim())
+  const aiToolActions = useMemo(
+    () => actions.filter((action) => action.id === vietnameseMarksActionId),
+    [actions],
+  )
+  const smartTextActions = useMemo(
+    () => actions.filter((action) => action.id !== vietnameseMarksActionId),
+    [actions],
+  )
 
   const saveAll = async () => {
     if (hasDuplicateKeys) {
@@ -124,12 +133,20 @@ export function SettingsPage({
 
   const moveAction = (id: string, direction: -1 | 1) => {
     onActionsChange((prev) => {
-      const index = prev.findIndex((action) => action.id === id)
+      const visibleActions = prev.filter((action) => action.id !== vietnameseMarksActionId)
+      const index = visibleActions.findIndex((action) => action.id === id)
       const nextIndex = index + direction
-      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev
+      if (index < 0 || nextIndex < 0 || nextIndex >= visibleActions.length) return prev
+
+      const currentId = visibleActions[index].id
+      const targetId = visibleActions[nextIndex].id
+      const currentFullIndex = prev.findIndex((action) => action.id === currentId)
+      const targetFullIndex = prev.findIndex((action) => action.id === targetId)
+      if (currentFullIndex < 0 || targetFullIndex < 0) return prev
+
       const next = [...prev]
-      const [item] = next.splice(index, 1)
-      next.splice(nextIndex, 0, item)
+      const [item] = next.splice(currentFullIndex, 1)
+      next.splice(targetFullIndex, 0, item)
       return next
     })
   }
@@ -148,9 +165,6 @@ export function SettingsPage({
         </div>
         <div className="flex items-center gap-2">
           <LanguagePills currentLang={settings.UI_LANGUAGE} onChange={onLanguageChange} />
-          <Button variant="outline" size="sm" onClick={() => window.desktopApi?.closeSettings(false)}>
-            {t.close}
-          </Button>
           <Button size="sm" onClick={saveAll} disabled={saving} className="bg-teal-600 text-white hover:bg-teal-700">
             <Save className="mr-1.5 h-3.5 w-3.5" />
             {t.saveAll}
@@ -232,6 +246,37 @@ export function SettingsPage({
               {t.builtinHint}
             </div>
             <div className="space-y-2">
+              {aiToolActions.map((action) => (
+                <div key={action.id} className="flex items-start gap-3 rounded-lg border border-teal-200 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(20,184,166,0.08)]">
+                  <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded bg-teal-50 text-xs font-bold text-teal-700">
+                    {action.hotkey.toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-grow">
+                    <div className="text-sm font-semibold text-slate-900">{action.name}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-500">{action.prompt}</div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                      <span className="rounded bg-slate-100 px-2 py-1">
+                        {action.ask_before_run ? t.askBeforeRun : t.runDirect}
+                      </span>
+                      {action.return_with_source ? (
+                        <span className="rounded bg-slate-100 px-2 py-1">{t.returnWithSource}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="icon" onClick={() => setEditingAction(action)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => onActionsChange((prev) => prev.filter((item) => item.id !== action.id))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
               {builtinActions.map((action) => (
                 <BuiltinHotkeyEditor
                   key={action.id}
@@ -254,7 +299,7 @@ export function SettingsPage({
             </div>
 
             <div className="space-y-2">
-              {actions.map((action, index) => (
+              {smartTextActions.map((action, index) => (
                 <div key={action.id} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
                   <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded bg-slate-100 text-xs font-bold text-slate-700">
                     {action.hotkey.toUpperCase()}
@@ -275,7 +320,7 @@ export function SettingsPage({
                     <Button variant="outline" size="icon" onClick={() => moveAction(action.id, -1)} disabled={index === 0}>
                       <ArrowUp className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="icon" onClick={() => moveAction(action.id, 1)} disabled={index === actions.length - 1}>
+                    <Button variant="outline" size="icon" onClick={() => moveAction(action.id, 1)} disabled={index === smartTextActions.length - 1}>
                       <ArrowDown className="h-4 w-4" />
                     </Button>
                     <Button variant="outline" size="icon" onClick={() => setEditingAction(action)}>

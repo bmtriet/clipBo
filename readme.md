@@ -34,11 +34,16 @@ npm run tauri:build
 ```
 
 ## Ubuntu/Linux prerequisites
-Tauri v2 cần WebKitGTK 4.1 và các gói build GTK trên Ubuntu:
+Tauri v2 dev build trên Linux cần `pkg-config`, GTK 3, WebKitGTK 4.1, Soup 3, và các gói build liên quan. Trên Ubuntu:
 
 ```bash
 sudo apt update
 sudo apt install -y \
+  pkg-config \
+  libglib2.0-dev \
+  libgtk-3-dev \
+  libsoup-3.0-dev \
+  libjavascriptcoregtk-4.1-dev \
   libwebkit2gtk-4.1-dev \
   build-essential \
   curl \
@@ -51,6 +56,8 @@ sudo apt install -y \
   xdotool \
   gnome-screenshot
 ```
+
+Repo này đã tắt feature Tauri `dbus` mặc định vì app không dùng tray trên Linux. Nếu bạn gặp lỗi kiểu `libdbus-sys` / `dbus-1.pc`, hãy cập nhật code hiện tại rồi chạy lại `./run.sh`.
 
 Khuyến nghị chạy bằng **Ubuntu on Xorg** thay vì Wayland nếu cần copy selected text và pasteback ổn định, vì app dùng `xdotool` để gửi `Ctrl+C`/`Ctrl+V` và restore cửa sổ đích.
 
