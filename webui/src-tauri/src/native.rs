@@ -72,6 +72,28 @@ pub fn active_window_id() -> Option<String> {
     None
 }
 
+pub fn mouse_position() -> Option<ScreenPoint> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("osascript")
+            .args([
+                "-e",
+                "tell application \"System Events\" to get the position of the mouse",
+            ])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let (x, y) = raw.split_once(',')?;
+        let x = x.trim().parse::<f64>().ok()?;
+        let y = y.trim().parse::<f64>().ok()?;
+        return Some(ScreenPoint { x, y });
+    }
+    None
+}
+
 pub fn target_window_center(target_window_id: Option<&str>) -> Option<ScreenPoint> {
     #[cfg(target_os = "linux")]
     {

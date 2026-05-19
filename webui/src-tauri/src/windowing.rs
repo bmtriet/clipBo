@@ -5,7 +5,6 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-#[cfg(target_os = "linux")]
 use crate::native;
 
 #[derive(Clone, Copy, Debug)]
@@ -116,30 +115,51 @@ fn apply_popup_placement(
     width: f64,
     height: f64,
 ) {
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(position) = popup_position_for_target(window, target_window_id, width, height) {
-            let _ = window.set_position(position);
-            return;
-        }
+    if let Some(position) = popup_position_for_target(window, target_window_id, width, height) {
+        let _ = window.set_position(position);
+        return;
     }
 
     let _ = window.center();
 }
 
-#[cfg(target_os = "linux")]
 fn popup_position_for_target(
-    _window: &WebviewWindow,
+    window: &WebviewWindow,
     target_window_id: Option<&str>,
     width: f64,
     height: f64,
 ) -> Option<LogicalPosition<f64>> {
-    native::popup_position_for_target(
+    #[cfg(target_os = "linux")]
+    if let Some(point) = native::popup_position_for_target(
         target_window_id,
         width.round() as i32,
         height.round() as i32,
-    )
-    .map(|point| LogicalPosition::new(point.x, point.y))
+    ) {
+        return Some(LogicalPosition::new(point.x, point.y));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let cursor = native::mouse_position()?;
+        let monitor = window.current_monitor().ok().flatten()?;
+        let origin = monitor.position();
+        let size = monitor.size();
+        let margin = 12.0;
+        let right_bound = origin.x as f64 + size.width as f64;
+        let bottom_bound = origin.y as f64 + size.height as f64;
+
+        let prefer_right = cursor.x + width + margin <= right_bound;
+        let prefer_bottom = cursor.y + height + margin <= bottom_bound;
+
+        let mut x = if prefer_right { cursor.x + margin } else { cursor.x - width - margin };
+        let mut y = if prefer_bottom { cursor.y + margin } else { cursor.y - height - margin };
+
+        x = x.max(origin.x as f64 + margin).min(right_bound - width - margin);
+        y = y.max(origin.y as f64 + margin).min(bottom_bound - height - margin);
+        return Some(LogicalPosition::new(x, y));
+    }
+
+    None
 }
 
 fn page_url(page: Page, ui_language: &str, payload: serde_json::Value) -> String {
