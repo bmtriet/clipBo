@@ -20,7 +20,9 @@
 Built with **React / Vite + Tauri / Rust**.
 
 ### Screenshots
-<img src="screenshots/overview.png" alt="ClipBo Overview" width="50%" />
+<p align="center">
+  <img src="screenshots/en.png" alt="ClipBo English UI" width="50%" />
+</p>
 
 ### Features
 - Global AI action popup
@@ -31,6 +33,17 @@ Built with **React / Vite + Tauri / Rust**.
 - Clipboard copy & pasteback
 - macOS permissions flow
 - Multilingual defaults (EN/VI/ZH)
+
+### Release
+- Public beta release is available on GitHub Releases: `v0.1-beta`.
+
+### macOS Note (Important)
+- ClipBo is currently free and open-source, and **not notarized yet**.
+- On macOS, you may see a security warning when opening the app for the first time.
+
+### Platform Plan
+- Linux (Ubuntu) support is in active development.
+- Windows 11 support is planned soon.
 
 ### Development
 ```bash
@@ -66,6 +79,11 @@ MIT License.
 
 Xây dựng với **React / Vite + Tauri / Rust**.
 
+### Ảnh giao diện
+<p align="center">
+  <img src="screenshots/overview.png" alt="ClipBo Vietnamese UI" width="50%" />
+</p>
+
 ### Tính năng
 - Popup action toàn cục
 - CRUD Smart Action
@@ -75,6 +93,17 @@ Xây dựng với **React / Vite + Tauri / Rust**.
 - Copy / pasteback về app đích
 - Luồng quyền macOS
 - Action mặc định đa ngôn ngữ (EN/VI/ZH)
+
+### Release
+- Bản public beta đã có trên GitHub Releases: `v0.1-beta`.
+
+### Ghi chú macOS (Quan trọng)
+- ClipBo hiện là app miễn phí, mã nguồn mở và **chưa notarize**.
+- Trên macOS, bạn có thể thấy cảnh báo bảo mật ở lần mở đầu tiên.
+
+### Kế hoạch nền tảng
+- Bản Linux (Ubuntu) đang được triển khai tích cực.
+- Bản Windows 11 cũng đang được lên kế hoạch phát hành sớm.
 
 ### Chạy dev
 ```bash
@@ -119,6 +148,15 @@ MIT License.
 - 剪贴板复制与粘贴回填
 - macOS 权限流程
 - 多语言默认动作（EN/VI/ZH）
+
+### 界面截图
+<p align="center">
+  <img src="screenshots/zh.png" alt="ClipBo Chinese UI" width="50%" />
+</p>
+
+### 平台计划
+- Linux（Ubuntu）版本正在积极开发中。
+- Windows 11 版本也在近期计划中。
 
 ### 开发
 ```bash
