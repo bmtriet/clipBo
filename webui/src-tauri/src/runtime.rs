@@ -139,7 +139,11 @@ pub async fn open_popup(
         target_window_id.as_deref(),
         Some(popup_size),
     )?;
-    let response = receiver.await        .map_err(|_| "Popup was closed.".to_string())?;
+    let response = receiver.await        .map_err(|err| {
+            let err_msg = format!("Popup was closed unexpectedly: {err}");
+            show_error_dialog(&app, &snapshot.settings.ui_language, &err_msg);
+            err.to_string()
+        })?;
 
     windowing::hide_window(&app, Page::Popup);
     if response.get("type").and_then(|v| v.as_str()) == Some("open_settings") {
@@ -154,7 +158,10 @@ pub async fn open_popup(
     if action_id.is_empty() {
         return Ok(());
     }
-    process_action(app, settings_state.inner(), runtime.inner(), snapshot, action_id, target_window_id).await
+    if let Err(err) = process_action(app.clone(), settings_state.inner(), runtime.inner(), snapshot.clone(), action_id, target_window_id).await {
+        show_error_dialog(&app, &snapshot.settings.ui_language, &err);
+    }
+    Ok(())
 }
 
 pub async fn toggle_popup_from_dock(
@@ -282,6 +289,10 @@ fn show_response_dialog(app: &AppHandle, ui_language: &str, title: &str, content
         None,
     )
     .map(|_| ())
+}
+
+fn show_error_dialog(app: &AppHandle, ui_language: &str, message: &str) {
+    let _ = show_response_dialog(app, ui_language, "Error", message, "clipBo");
 }
 
 fn deliver_text_result(
