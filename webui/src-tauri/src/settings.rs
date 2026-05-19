@@ -40,6 +40,8 @@ pub struct GeneralSettings {
     pub ui_language: String,
     #[serde(rename = "DEBUG")]
     pub debug: bool,
+    #[serde(rename = "SHOW_RESPONSE_DIALOG_WHEN_NO_INPUT", default = "default_show_response_dialog")]
+    pub show_response_dialog_when_no_input: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -130,7 +132,12 @@ pub fn default_settings() -> GeneralSettings {
         hotkey_popup: default_popup_hotkey(),
         ui_language: "en".to_string(),
         debug: false,
+        show_response_dialog_when_no_input: true,
     }
+}
+
+fn default_show_response_dialog() -> bool {
+    true
 }
 
 fn app_data_dir() -> Option<PathBuf> {
@@ -232,6 +239,10 @@ fn import_legacy_settings(values: &HashMap<String, String>) -> GeneralSettings {
             .get("DEBUG")
             .map(|value| value.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(default.debug),
+        show_response_dialog_when_no_input: values
+            .get("SHOW_RESPONSE_DIALOG_WHEN_NO_INPUT")
+            .map(|value| value.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(default.show_response_dialog_when_no_input),
     }
 }
 

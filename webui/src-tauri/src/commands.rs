@@ -67,6 +67,20 @@ pub fn cancel_ask(app: AppHandle, state: State<'_, RuntimeState>) {
 }
 
 #[tauri::command]
+pub async fn retake_image_for_ask(
+    app: AppHandle,
+    settings: State<'_, AppState>,
+    runtime_state: State<'_, RuntimeState>,
+) -> Result<serde_json::Value, String> {
+    Ok(runtime::retake_image_for_ask(app, settings.inner(), runtime_state.inner()).await)
+}
+
+#[tauri::command]
+pub fn get_ask_image_context(runtime_state: State<'_, RuntimeState>) -> serde_json::Value {
+    runtime::get_ask_image_context(runtime_state.inner())
+}
+
+#[tauri::command]
 pub fn submit_popup(app: AppHandle, state: State<'_, RuntimeState>, action_id: String) {
     state.answer_pending(Page::Popup, json!({ "type": "popup_action", "action_id": action_id }));
     windowing::hide_window(&app, Page::Popup);
@@ -110,6 +124,13 @@ pub async fn bootstrap_chat(
 }
 
 #[tauri::command]
+pub fn get_chat_state(
+    runtime_state: State<'_, RuntimeState>,
+) -> Result<runtime::ChatResponse, String> {
+    Ok(runtime::get_chat_state(runtime_state.inner()))
+}
+
+#[tauri::command]
 pub async fn send_chat_message(
     settings: State<'_, AppState>,
     runtime_state: State<'_, RuntimeState>,
@@ -119,13 +140,30 @@ pub async fn send_chat_message(
 }
 
 #[tauri::command]
-pub fn insert_latest_reply(runtime_state: State<'_, RuntimeState>) -> serde_json::Value {
-    runtime::insert_latest_reply(runtime_state.inner())
+pub fn insert_latest_reply(
+    app: AppHandle,
+    settings: State<'_, AppState>,
+    runtime_state: State<'_, RuntimeState>,
+) -> serde_json::Value {
+    runtime::insert_latest_reply(&app, settings.inner(), runtime_state.inner())
 }
 
 #[tauri::command]
 pub fn close_chat(app: AppHandle) {
     windowing::hide_window(&app, Page::Chat);
+}
+
+#[tauri::command]
+pub fn close_response(app: AppHandle) {
+    windowing::hide_window(&app, Page::Response);
+}
+
+#[tauri::command]
+pub fn copy_response_text(text: String) -> serde_json::Value {
+    match crate::native::set_clipboard_text(&text) {
+        Ok(()) => json!({ "ok": true }),
+        Err(err) => json!({ "ok": false, "error": err.to_string() }),
+    }
 }
 
 #[tauri::command]

@@ -89,6 +89,19 @@
   html {
     @apply font-sans;
   }
+  .desktop-drag-region {
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  [role="button"],
+  [data-tauri-drag-region="false"] {
+    -webkit-app-region: no-drag;
+  }
 }
 
 @layer base {

@@ -80,7 +80,8 @@ pub fn build_popup_payload(
     snapshot: &SettingsSnapshot,
     target_window_id: Option<&str>,
 ) -> PopupPayload {
-    let selected_text = native::copy_selected_text(target_window_id).unwrap_or_default();
+    let _ = target_window_id;
+    let selected_text = native::copy_selected_text_fast().unwrap_or_default();
     let has_selected_text = !selected_text.trim().is_empty();
     let (has_clipboard_image, has_clipboard_text) = if has_selected_text {
         (false, false)
@@ -124,7 +125,7 @@ fn rank_items(
     context: &PopupContext,
     launcher_state: &LauncherState,
 ) -> Vec<RankedPopupItem> {
-    let smart_items = snapshot.smart_actions.iter().map(|action| {
+    let smart_items = snapshot.smart_actions.iter().filter(|action| action.enabled).map(|action| {
         let category = smart_action_category(action.id.as_str());
         let base = priority_base(action.id.as_str(), &category);
         build_ranked_item(
@@ -152,7 +153,7 @@ fn rank_items(
         )
     });
 
-    let builtin_items = snapshot.builtin_actions.iter().map(|action| {
+    let builtin_items = snapshot.builtin_actions.iter().filter(|action| action.enabled).map(|action| {
         let category = builtin_action_category(action);
         let base = priority_base(action.id.as_str(), &category);
         build_ranked_item(

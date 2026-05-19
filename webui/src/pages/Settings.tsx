@@ -10,6 +10,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  CircleHelp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InputField } from "../components/InputField"
@@ -22,6 +23,22 @@ import appIcon from "../assets/app-icon.png"
 import type { GeneralSettings, SmartAction, BuiltinAction, UiLanguage } from "../types"
 import { createEmptyAction } from "../types"
 import type { EnTranslations } from "../i18n"
+
+function ActionSwitch({ checked, onChange, onLabel, offLabel }: { checked: boolean; onChange: () => void; onLabel: string; offLabel: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className={`inline-flex h-7 w-14 items-center rounded-full px-1 transition ${checked ? "bg-teal-600" : "bg-slate-300"}`}
+      aria-pressed={checked}
+    >
+      <span
+        className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-7" : "translate-x-0"}`}
+      />
+      <span className="sr-only">{checked ? onLabel : offLabel}</span>
+    </button>
+  )
+}
 
 export function SettingsPage({
   t,
@@ -46,6 +63,7 @@ export function SettingsPage({
   const [saving, setSaving] = useState(false)
   const [capturingPopupHotkey, setCapturingPopupHotkey] = useState(false)
   const [editingAction, setEditingAction] = useState<SmartAction | null>(null)
+  const [activeTab, setActiveTab] = useState<"general" | "provider" | "action" | "about">("general")
   const vietnameseMarksActionId = "add-vietnamese-marks"
 
   const updateField = <K extends keyof GeneralSettings>(key: K, value: GeneralSettings[K]) => {
@@ -186,17 +204,17 @@ export function SettingsPage({
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 pb-24">
-        <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[220px_1fr]">
-          <aside className="hidden self-start rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm lg:block">
-            <div className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t.settingsTitle}</div>
-            {[t.general, t.provider, t.builtins, t.smartActions].map((item) => (
-              <div key={item} className="rounded-md px-2 py-2 text-slate-600">
-                {item}
-              </div>
-            ))}
-          </aside>
+        <div className="mx-auto max-w-6xl space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+            <div className="grid grid-cols-4 gap-2">
+              <button onClick={() => setActiveTab("general")} className={`rounded-md px-3 py-2 text-sm font-medium ${activeTab === "general" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{t.general}</button>
+              <button onClick={() => setActiveTab("provider")} className={`rounded-md px-3 py-2 text-sm font-medium ${activeTab === "provider" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{t.provider}</button>
+              <button onClick={() => setActiveTab("action")} className={`rounded-md px-3 py-2 text-sm font-medium ${activeTab === "action" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{t.actionTab}</button>
+              <button onClick={() => setActiveTab("about")} className={`rounded-md px-3 py-2 text-sm font-medium ${activeTab === "about" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{t.about}</button>
+            </div>
+          </div>
           <div className="space-y-4">
-          <SectionCard title={t.general} icon={<Sparkles className="h-4 w-4" />}>
+          {activeTab === "general" ? <SectionCard title={t.general} icon={<Sparkles className="h-4 w-4" />}>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{t.uiLanguage}</label>
@@ -225,29 +243,42 @@ export function SettingsPage({
                     setCapturingPopupHotkey(false)
                     ;(e.currentTarget as HTMLInputElement).blur()
                   }}
-                  placeholder={capturingPopupHotkey ? "Press shortcut..." : ""}
+                  placeholder={capturingPopupHotkey ? t.pressShortcut : ""}
                 />
                 <div className="mt-1 text-xs text-slate-500">
-                  {capturingPopupHotkey ? "Đang chờ bấm tổ hợp phím..." : "Bấm vào ô rồi nhấn tổ hợp phím để ghi nhận."}
+                  {capturingPopupHotkey ? t.waitShortcut : t.clickThenPress}
                 </div>
               </div>
             </div>
             <ToggleField checked={settings.DEBUG} onChange={(value) => updateField("DEBUG", value)} label={t.debug} />
-          </SectionCard>
+            <div className="space-y-1">
+              <ToggleField
+                checked={settings.SHOW_RESPONSE_DIALOG_WHEN_NO_INPUT}
+                onChange={(value) => updateField("SHOW_RESPONSE_DIALOG_WHEN_NO_INPUT", value)}
+                label={t.responseFallback}
+              />
+              <p className="px-1 text-xs text-slate-500">{t.responseFallbackHint}</p>
+            </div>
+          </SectionCard> : null}
 
-          <SectionCard title={t.provider} icon={<Bot className="h-4 w-4" />}>
+          {activeTab === "provider" ? <SectionCard title={t.provider} icon={<Bot className="h-4 w-4" />}>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{t.providerLabel}</label>
-                <select
-                  value={settings.AI_PROVIDER}
-                  onChange={(e) => updateField("AI_PROVIDER", e.target.value as "gemini" | "openai" | "ollama")}
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm leading-5 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
-                >
-                  <option value="gemini">Gemini</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="ollama">Ollama</option>
-                </select>
+                <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-1">
+                  {(["gemini", "openai", "ollama"] as const).map((provider) => (
+                    <button
+                      key={provider}
+                      type="button"
+                      onClick={() => updateField("AI_PROVIDER", provider)}
+                      className={`h-8 rounded-md text-sm font-medium ${
+                        settings.AI_PROVIDER === provider ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {provider === "openai" ? "OpenAI" : provider === "ollama" ? "Ollama" : "Gemini"}
+                    </button>
+                  ))}
+                </div>
               </div>
               {settings.AI_PROVIDER === "gemini" ? (
                 <>
@@ -293,9 +324,9 @@ export function SettingsPage({
             {settings.AI_PROVIDER === "ollama" ? (
               <ToggleField checked={settings.OLLAMA_THINKING} onChange={(value) => updateField("OLLAMA_THINKING", value)} label={t.ollamaThinking} />
             ) : null}
-          </SectionCard>
+          </SectionCard> : null}
 
-          <SectionCard title={t.builtins} icon={<Bot className="h-4 w-4" />}>
+          {activeTab === "action" ? <SectionCard title={t.builtins} icon={<Bot className="h-4 w-4" />}>
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
               {t.builtinHint}
             </div>
@@ -318,6 +349,16 @@ export function SettingsPage({
                     </div>
                   </div>
                   <div className="flex gap-1">
+                    <ActionSwitch
+                      checked={action.enabled}
+                      onChange={() =>
+                        onActionsChange((prev) =>
+                          prev.map((item) => (item.id === action.id ? { ...item, enabled: !item.enabled } : item)),
+                        )
+                      }
+                      onLabel={t.on}
+                      offLabel={t.off}
+                    />
                     <Button variant="outline" size="icon" onClick={() => setEditingAction(action)}>
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -332,19 +373,33 @@ export function SettingsPage({
                 </div>
               ))}
               {builtinActions.map((action) => (
-                <BuiltinHotkeyEditor
-                  key={action.id}
-                  action={action}
-                  t={t}
-                  onChange={(next) =>
-                    onBuiltinActionsChange((prev) => prev.map((item) => (item.id === next.id ? next : item)))
-                  }
-                />
+                <div key={action.id} className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold text-slate-900">{action.name}</div>
+                    <ActionSwitch
+                      checked={action.enabled}
+                      onChange={() =>
+                        onBuiltinActionsChange((prev) =>
+                          prev.map((item) => (item.id === action.id ? { ...item, enabled: !item.enabled } : item)),
+                        )
+                      }
+                      onLabel={t.on}
+                      offLabel={t.off}
+                    />
+                  </div>
+                  <BuiltinHotkeyEditor
+                    action={action}
+                    t={t}
+                    onChange={(next) =>
+                      onBuiltinActionsChange((prev) => prev.map((item) => (item.id === next.id ? next : item)))
+                    }
+                  />
+                </div>
               ))}
             </div>
-          </SectionCard>
+          </SectionCard> : null}
 
-          <SectionCard title={t.smartActions} icon={<Keyboard className="h-4 w-4" />}>
+          {activeTab === "action" ? <SectionCard title={t.smartActions} icon={<Keyboard className="h-4 w-4" />}>
             <div className="flex items-center justify-between rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
               <p className="text-sm text-slate-600">{t.actionsHint}</p>
               <Button size="sm" onClick={() => setEditingAction(createEmptyAction())}>
@@ -372,6 +427,16 @@ export function SettingsPage({
                     </div>
                   </div>
                   <div className="flex gap-1">
+                    <ActionSwitch
+                      checked={action.enabled}
+                      onChange={() =>
+                        onActionsChange((prev) =>
+                          prev.map((item) => (item.id === action.id ? { ...item, enabled: !item.enabled } : item)),
+                        )
+                      }
+                      onLabel={t.on}
+                      offLabel={t.off}
+                    />
                     <Button variant="outline" size="icon" onClick={() => moveAction(action.id, -1)} disabled={index === 0}>
                       <ArrowUp className="h-4 w-4" />
                     </Button>
@@ -392,7 +457,19 @@ export function SettingsPage({
                 </div>
               ))}
             </div>
-          </SectionCard>
+          </SectionCard> : null}
+
+          {activeTab === "about" ? (
+            <SectionCard title={t.aboutTitle} icon={<CircleHelp className="h-4 w-4" />}>
+              <div className="space-y-2 text-sm text-slate-700">
+                <p><span className="font-semibold">{t.authorLabel}:</span> Triết Bùi</p>
+                <p><span className="font-semibold">GitHub:</span> <a className="text-teal-700 underline" href="https://github.com/bmtriet/clipBo">github.com/bmtriet/clipBo</a></p>
+                <p><span className="font-semibold">Facebook:</span> <a className="text-teal-700 underline" href="https://fb.me/trietbui89">fb.me/trietbui89</a></p>
+                <p><span className="font-semibold">Email:</span> <a className="text-teal-700 underline" href="mailto:minhtrietbui@live.com">minhtrietbui@live.com</a></p>
+                <p className="text-xs text-slate-500">{t.aboutContributeHint}</p>
+              </div>
+            </SectionCard>
+          ) : null}
 
           <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
             {error ? (

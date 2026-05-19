@@ -1,4 +1,4 @@
-export type PageKind = "ask" | "popup" | "settings" | "chat" | "image_source"
+export type PageKind = "ask" | "popup" | "settings" | "chat" | "image_source" | "response"
 export type UiLanguage = "en" | "vi" | "zh"
 export type ResponseMode = "paste" | "chat"
 export type BuiltinKind = "ai_prompt" | "image_ask"
@@ -19,6 +19,7 @@ export type GeneralSettings = {
   HOTKEY_POPUP: string
   UI_LANGUAGE: UiLanguage
   DEBUG: boolean
+  SHOW_RESPONSE_DIALOG_WHEN_NO_INPUT: boolean
 }
 
 export type SmartAction = {
@@ -28,6 +29,7 @@ export type SmartAction = {
   hotkey: string
   return_with_source: boolean
   ask_before_run: boolean
+  enabled: boolean
 }
 
 export type BuiltinAction = {
@@ -35,6 +37,7 @@ export type BuiltinAction = {
   name: string
   hotkey: string
   kind: BuiltinKind
+  enabled: boolean
 }
 
 export type SettingsSnapshot = {
@@ -56,6 +59,7 @@ export type AskPayload = {
   responseModeEnabled?: boolean
   defaultResponseMode?: ResponseMode
   contextMode?: "selected_text" | "prompt_only"
+  imageContextAvailable?: boolean
 }
 
 export type ImageSourcePayload = {
@@ -74,13 +78,17 @@ export type ChatSession = {
   latest_reply: string
   context_hint?: string
   selected_text?: string
-  image_payload?: {
-    source?: string
-    mime_type?: string
-    image_base64?: string
-    size?: { width: number; height: number }
-    region?: { left: number; top: number; right: number; bottom: number }
-  }
+  image_payload?: ImagePayload
+  initial_user_prompt?: string
+  target_window_id?: string
+}
+
+export type ImagePayload = {
+  source?: string
+  mime_type?: string
+  image_base64?: string
+  size?: { width: number; height: number }
+  region?: { left: number; top: number; right: number; bottom: number }
 }
 
 export type ChatApiResponse = {
@@ -123,6 +131,8 @@ export type PopupPayload = {
 export type DesktopApi = {
   submitAsk: (prompt: string, responseMode?: string) => void
   cancelAsk: () => void
+  retakeImageForAsk: () => Promise<{ ok: boolean; error?: string }>
+  getAskImageContext: () => Promise<{ ok: boolean; error?: string; image_payload?: ImagePayload }>
   submitPopup: (actionId: string) => void
   cancelPopup: () => void
   openSettings: () => void
@@ -137,6 +147,8 @@ export type DesktopApi = {
   closeChat: () => void
   chooseImageSource: (source: string, doNotAskAgain?: boolean) => void
   cancelImageSource: () => void
+  closeResponse: () => void
+  copyResponseText: (text: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 export const defaultSettings: GeneralSettings = {
@@ -152,6 +164,7 @@ export const defaultSettings: GeneralSettings = {
   HOTKEY_POPUP: "<ctrl>+'",
   UI_LANGUAGE: "en",
   DEBUG: false,
+  SHOW_RESPONSE_DIALOG_WHEN_NO_INPUT: true,
 }
 
 export function createActionId() {
@@ -169,6 +182,7 @@ export function createEmptyAction(): SmartAction {
     hotkey: "",
     return_with_source: false,
     ask_before_run: false,
+    enabled: true,
   }
 }
 
@@ -241,7 +255,7 @@ export function parsePayload<T extends object>(): T {
 
 export function readPageParam(): PageKind {
   const pageParam = new URLSearchParams(window.location.search).get("page")
-  if (pageParam === "popup" || pageParam === "settings" || pageParam === "ask" || pageParam === "chat" || pageParam === "image_source") {
+  if (pageParam === "popup" || pageParam === "settings" || pageParam === "ask" || pageParam === "chat" || pageParam === "image_source" || pageParam === "response") {
     return pageParam
   }
   return "ask"

@@ -149,7 +149,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
   return (
     <div className="h-screen bg-white font-sans text-slate-900">
       <div className="flex h-full flex-col overflow-hidden border border-slate-200/80 bg-white">
-        <div data-tauri-drag-region className="desktop-drag-region select-none flex cursor-move items-center border-b border-slate-200/80 px-3 py-3">
+        <div className="flex select-none items-center border-b border-slate-200/80 px-3 py-3">
           <img src={appIcon} alt="clipBo" className="mr-2.5 h-10 w-10 shrink-0 object-contain" />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-xl font-bold text-slate-800">{t.popupTitle}</h2>

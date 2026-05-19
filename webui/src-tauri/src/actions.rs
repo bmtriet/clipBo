@@ -11,6 +11,8 @@ pub struct SmartAction {
     pub hotkey: String,
     pub return_with_source: bool,
     pub ask_before_run: bool,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -19,7 +21,11 @@ pub struct BuiltinAction {
     pub name: String,
     pub hotkey: String,
     pub kind: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
 }
+
+fn default_enabled() -> bool { true }
 
 pub fn default_builtin_actions() -> Vec<BuiltinAction> {
     vec![
@@ -28,12 +34,14 @@ pub fn default_builtin_actions() -> Vec<BuiltinAction> {
             name: "AI Prompt".to_string(),
             hotkey: "a".to_string(),
             kind: AI_PROMPT_ID.to_string(),
+            enabled: true,
         },
         BuiltinAction {
             id: IMAGE_ASK_ID.to_string(),
             name: "Ask by Image".to_string(),
             hotkey: "i".to_string(),
             kind: IMAGE_ASK_ID.to_string(),
+            enabled: true,
         },
     ]
 }
@@ -47,6 +55,7 @@ pub fn default_smart_actions() -> Vec<SmartAction> {
             hotkey: "1".to_string(),
             return_with_source: false,
             ask_before_run: false,
+            enabled: true,
         },
         SmartAction {
             id: "translate-to-english".to_string(),
@@ -55,6 +64,7 @@ pub fn default_smart_actions() -> Vec<SmartAction> {
             hotkey: "e".to_string(),
             return_with_source: false,
             ask_before_run: false,
+            enabled: true,
         },
         SmartAction {
             id: "translate-to-vietnamese".to_string(),
@@ -63,6 +73,7 @@ pub fn default_smart_actions() -> Vec<SmartAction> {
             hotkey: "v".to_string(),
             return_with_source: false,
             ask_before_run: false,
+            enabled: true,
         },
         SmartAction {
             id: "translate-to-zh-tw".to_string(),
@@ -71,6 +82,7 @@ pub fn default_smart_actions() -> Vec<SmartAction> {
             hotkey: "z".to_string(),
             return_with_source: false,
             ask_before_run: false,
+            enabled: true,
         },
         SmartAction {
             id: "translate-to-khmer".to_string(),
@@ -79,6 +91,7 @@ pub fn default_smart_actions() -> Vec<SmartAction> {
             hotkey: "k".to_string(),
             return_with_source: false,
             ask_before_run: false,
+            enabled: true,
         },
     ]
 }

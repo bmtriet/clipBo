@@ -5,6 +5,7 @@ import { PopupPage } from "./pages/Popup"
 import { SettingsPage } from "./pages/Settings"
 import { ChatPage } from "./pages/Chat"
 import { ImageSourcePage } from "./pages/ImageSource"
+import { ResponsePage } from "./pages/Response"
 import {
   defaultSettings,
   readPageParam,
@@ -108,6 +109,10 @@ export default function App() {
 
   if (page === "image_source") {
     return <ImageSourcePage t={t} uiLang={lang} changeLang={changeLang} />
+  }
+
+  if (page === "response") {
+    return <ResponsePage t={t} />
   }
 
   return <AskPage t={t} uiLang={lang} changeLang={changeLang} />

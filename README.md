@@ -35,7 +35,7 @@ Built with **React / Vite + Tauri / Rust**.
 - Multilingual defaults (EN/VI/ZH)
 
 ### Release
-- Public beta release is available on GitHub Releases: `v0.1-beta`.
+- Public beta release is available on GitHub Releases: `v0.2.0-beta`.
 
 ### macOS Note (Important)
 - ClipBo is currently free and open-source, and **not notarized yet**.
@@ -95,7 +95,7 @@ Xây dựng với **React / Vite + Tauri / Rust**.
 - Action mặc định đa ngôn ngữ (EN/VI/ZH)
 
 ### Release
-- Bản public beta đã có trên GitHub Releases: `v0.1-beta`.
+- Bản public beta đã có trên GitHub Releases: `v0.2.0-beta`.
 
 ### Ghi chú macOS (Quan trọng)
 - ClipBo hiện là app miễn phí, mã nguồn mở và **chưa notarize**.

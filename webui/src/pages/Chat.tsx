@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm"
 import type { UiLanguage, ChatSession } from "../types"
 import { waitForDesktopApi } from "../types"
 import type { EnTranslations } from "../i18n"
+import { markdownToPlainText } from "../markdown"
 
 export function ChatPage({
   t,
@@ -31,6 +32,7 @@ export function ChatPage({
   const [previewOpen, setPreviewOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const bootstrapStartedRef = useRef(false)
 
   useEffect(() => {
     if (document.activeElement !== textareaRef.current) {
@@ -39,12 +41,23 @@ export function ChatPage({
   }, [session])
 
   useEffect(() => {
+    if (bootstrapStartedRef.current) return
+    bootstrapStartedRef.current = true
     let mounted = true
     const bootstrap = async () => {
       const api = await waitForDesktopApi()
       if (!mounted) return
+      const initialState = await api.getChatState()
+      if (!mounted) return
+      if (initialState?.ok) {
+        const initialSession = initialState.session || null
+        setSession(initialSession)
+        setLoading(false)
+        setSending(Boolean(initialSession?.messages?.length && !initialSession.latest_reply))
+      }
       const response = await api.bootstrapChat()
       if (!mounted) return
+      setSending(false)
       if (!response?.ok) {
         setError(response?.error || t.chatErrorFallback)
       } else {
@@ -64,18 +77,27 @@ export function ChatPage({
   }, [t.chatErrorFallback])
 
   const send = async () => {
-    if (!draft.trim()) return
+    const prompt = draft.trim()
+    if (!prompt) return
     setSending(true)
     setError("")
     setInsertSuccess("")
-    const response = await window.desktopApi?.sendChatMessage(draft.trim())
+    setDraft("")
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            messages: [...current.messages, { role: "user", content: prompt }],
+          }
+        : current,
+    )
+    const response = await window.desktopApi?.sendChatMessage(prompt)
     setSending(false)
     if (!response?.ok) {
       setError(response?.error || t.chatErrorFallback)
       return
     }
     setSession(response.session || null)
-    setDraft("")
     textareaRef.current?.focus()
   }
 
@@ -118,14 +140,6 @@ export function ChatPage({
       setError(t.chatErrorFallback)
     }
   }
-
-  const toPlainText = (markdown: string) =>
-    markdown
-      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ""))
-      .replace(/`([^`]+)`/g, "$1")
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .replace(/[*_~>#-]/g, "")
-      .trim()
 
   useEffect(() => {
     const scroller = scrollRef.current
@@ -204,7 +218,7 @@ export function ChatPage({
                           </button>
                           <button
                             className="block w-full px-2 py-1.5 text-left hover:bg-slate-50"
-                            onClick={() => void copyMessage(toPlainText(message.content), index)}
+                            onClick={() => void copyMessage(markdownToPlainText(message.content), index)}
                           >
                             {t.copyPlain}
                           </button>

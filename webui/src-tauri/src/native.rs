@@ -74,22 +74,30 @@ pub fn active_window_id() -> Option<String> {
 
 pub fn mouse_position() -> Option<ScreenPoint> {
     #[cfg(target_os = "macos")]
-    {
-        let output = Command::new("osascript")
-            .args([
-                "-e",
-                "tell application \"System Events\" to get the position of the mouse",
-            ])
-            .output()
-            .ok()?;
-        if !output.status.success() {
+    unsafe {
+        #[repr(C)]
+        struct CGPoint {
+            x: f64,
+            y: f64,
+        }
+
+        #[link(name = "CoreGraphics", kind = "framework")]
+        extern "C" {
+            fn CGEventCreate(source: *const std::ffi::c_void) -> *mut std::ffi::c_void;
+            fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
+            fn CFRelease(cf: *const std::ffi::c_void);
+        }
+
+        let event = CGEventCreate(std::ptr::null());
+        if event.is_null() {
             return None;
         }
-        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let (x, y) = raw.split_once(',')?;
-        let x = x.trim().parse::<f64>().ok()?;
-        let y = y.trim().parse::<f64>().ok()?;
-        return Some(ScreenPoint { x, y });
+        let point = CGEventGetLocation(event);
+        CFRelease(event);
+        return Some(ScreenPoint {
+            x: point.x,
+            y: point.y,
+        });
     }
     None
 }
@@ -188,6 +196,14 @@ pub fn restore_focus(window_id: Option<&str>) {
 
 pub fn copy_selected_text(target_window_id: Option<&str>) -> Result<String, NativeError> {
     restore_focus(target_window_id);
+    copy_selected_text_internal()
+}
+
+pub fn copy_selected_text_fast() -> Result<String, NativeError> {
+    copy_selected_text_internal()
+}
+
+fn copy_selected_text_internal() -> Result<String, NativeError> {
     let old_clipboard = snapshot_clipboard();
     press_copy_shortcut()?;
     thread::sleep(Duration::from_millis(80));
@@ -210,6 +226,26 @@ pub fn paste_text(text: &str, target_window_id: Option<&str>) -> Result<(), Nati
         .map_err(|err| NativeError::Message(err.to_string()))?;
     thread::sleep(Duration::from_millis(100));
     press_paste_shortcut()
+}
+
+pub fn set_clipboard_text(text: &str) -> Result<(), NativeError> {
+    let mut clipboard = Clipboard::new().map_err(|err| NativeError::Message(err.to_string()))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|err| NativeError::Message(err.to_string()))
+}
+
+pub fn target_has_editable_focus(target_window_id: Option<&str>) -> bool {
+    restore_focus(target_window_id);
+    #[cfg(target_os = "macos")]
+    {
+        return macos_focused_element_is_editable();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = target_window_id;
+        true
+    }
 }
 
 pub fn read_clipboard_image() -> Result<Option<ImagePayload>, NativeError> {
@@ -510,6 +546,121 @@ fn press_key_chord(key: &str) -> Result<(), NativeError> {
         Err(NativeError::Message(
             "Paste/copy shortcut automation for Windows is pending.".to_string(),
         ))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_focused_element_is_editable() -> bool {
+    use std::ffi::{c_char, c_void, CStr, CString};
+
+    type CFStringRef = *const c_void;
+    type AXUIElementRef = *mut c_void;
+
+    const K_CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateSystemWide() -> AXUIElementRef;
+        fn AXUIElementCopyAttributeValue(
+            element: AXUIElementRef,
+            attribute: CFStringRef,
+            value: *mut *const c_void,
+        ) -> i32;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFStringCreateWithCString(
+            alloc: *const c_void,
+            c_str: *const c_char,
+            encoding: u32,
+        ) -> CFStringRef;
+        fn CFStringGetCStringPtr(the_string: CFStringRef, encoding: u32) -> *const c_char;
+        fn CFStringGetCString(
+            the_string: CFStringRef,
+            buffer: *mut c_char,
+            buffer_size: isize,
+            encoding: u32,
+        ) -> bool;
+        fn CFRelease(cf: *const c_void);
+    }
+
+    unsafe fn cf_string(value: &str) -> Option<CFStringRef> {
+        let c_value = CString::new(value).ok()?;
+        let cf = CFStringCreateWithCString(std::ptr::null(), c_value.as_ptr(), K_CF_STRING_ENCODING_UTF8);
+        if cf.is_null() {
+            None
+        } else {
+            Some(cf)
+        }
+    }
+
+    unsafe fn cf_string_to_string(value: CFStringRef) -> Option<String> {
+        if value.is_null() {
+            return None;
+        }
+        let ptr = CFStringGetCStringPtr(value, K_CF_STRING_ENCODING_UTF8);
+        if !ptr.is_null() {
+            return CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_string());
+        }
+        let mut buffer = vec![0 as c_char; 512];
+        if CFStringGetCString(value, buffer.as_mut_ptr(), buffer.len() as isize, K_CF_STRING_ENCODING_UTF8) {
+            CStr::from_ptr(buffer.as_ptr()).to_str().ok().map(|s| s.to_string())
+        } else {
+            None
+        }
+    }
+
+    unsafe fn copy_attr(element: AXUIElementRef, attr: &str) -> Option<*const c_void> {
+        let attr = cf_string(attr)?;
+        let mut value: *const c_void = std::ptr::null();
+        let result = AXUIElementCopyAttributeValue(element, attr, &mut value);
+        CFRelease(attr);
+        if result == 0 && !value.is_null() {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    unsafe {
+        let system = AXUIElementCreateSystemWide();
+        if system.is_null() {
+            return false;
+        }
+        let focused_attr = match cf_string("AXFocusedUIElement") {
+            Some(value) => value,
+            None => return false,
+        };
+        let mut focused: *const c_void = std::ptr::null();
+        let focused_result = AXUIElementCopyAttributeValue(system, focused_attr, &mut focused);
+        CFRelease(focused_attr);
+        CFRelease(system);
+        if focused_result != 0 || focused.is_null() {
+            return false;
+        }
+
+        let role_value = copy_attr(focused as AXUIElementRef, "AXRole")
+            .and_then(|value| {
+                let role = cf_string_to_string(value as CFStringRef);
+                CFRelease(value);
+                role
+            })
+            .unwrap_or_default();
+        let subrole_value = copy_attr(focused as AXUIElementRef, "AXSubrole")
+            .and_then(|value| {
+                let subrole = cf_string_to_string(value as CFStringRef);
+                CFRelease(value);
+                subrole
+            })
+            .unwrap_or_default();
+        CFRelease(focused);
+
+        matches!(
+            role_value.as_str(),
+            "AXTextField" | "AXTextArea" | "AXComboBox" | "AXSearchField"
+        ) || subrole_value.contains("Text")
+            || subrole_value.contains("Search")
     }
 }
 

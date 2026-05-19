@@ -14,6 +14,27 @@ use crate::{
     windowing::{self, Page},
 };
 
+fn popup_size_for_payload(payload: &launcher::PopupPayload) -> (f64, f64) {
+    let width = 480.0;
+    let header = 84.0;
+    let footer = 62.0;
+    let section_header = 32.0;
+    let quick_item = 48.0;
+    let action_row = 52.0;
+    let mut body = 24.0;
+    for section in &payload.sections {
+        body += section_header;
+        if section.id == "quick_translate" {
+            let rows = (section.items.len() as f64 / 3.0).ceil().max(1.0);
+            body += rows * quick_item + 10.0;
+        } else {
+            body += (section.items.len() as f64) * action_row + 8.0;
+        }
+    }
+    let height = (header + body + footer).clamp(260.0, 760.0);
+    (width, height)
+}
+
 type PendingSender = oneshot::Sender<serde_json::Value>;
 
 #[derive(Default)]
@@ -22,7 +43,7 @@ pub struct RuntimeState {
     popup: Mutex<Option<PendingSender>>,
     image_source: Mutex<Option<PendingSender>>,
     chat_session: Mutex<Option<ChatSession>>,
-    skip_image_source_picker: Mutex<bool>,
+    ask_image_context: Mutex<Option<ImagePayload>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,12 +81,23 @@ impl RuntimeState {
         self.set_chat_session(session);
     }
 
+    pub fn set_ask_image_context(&self, image: ImagePayload) {
+        *self.ask_image_context.lock().expect("ask image state poisoned") = Some(image);
+    }
+
+    pub fn ask_image_context(&self) -> Option<ImagePayload> {
+        self.ask_image_context
+            .lock()
+            .expect("ask image state poisoned")
+            .clone()
+    }
+
     fn pending_slot(&self, page: Page) -> &Mutex<Option<PendingSender>> {
         match page {
             Page::Ask => &self.ask,
             Page::Popup => &self.popup,
             Page::ImageSource => &self.image_source,
-            Page::Settings | Page::Chat => {
+            Page::Settings | Page::Chat | Page::Response => {
                 eprintln!("[RUNTIME] WARNING: pending_slot called for non-pending page: {:?}", page);
                 &self.ask
             }
@@ -83,12 +115,14 @@ pub async fn open_popup(
     let payload = launcher::build_popup_payload(settings_state.inner(), &snapshot, target_window_id.as_deref());
     let (sender, receiver) = oneshot::channel();
     runtime.set_pending(Page::Popup, sender);
+    let popup_size = popup_size_for_payload(&payload);
     windowing::show_page(
         &app,
         Page::Popup,
         &snapshot.settings.ui_language,
         serde_json::to_value(payload).unwrap_or_else(|_| json!({})),
         target_window_id.as_deref(),
+        Some(popup_size),
     )?;
     let response = receiver.await        .map_err(|_| "Popup was closed.".to_string())?;
 
@@ -106,6 +140,93 @@ pub async fn open_popup(
         return Ok(());
     }
     process_action(app, settings_state.inner(), runtime.inner(), snapshot, action_id, target_window_id).await
+}
+
+pub async fn toggle_popup_from_dock(
+    app: AppHandle,
+    settings_state: tauri::State<'_, AppState>,
+    runtime: tauri::State<'_, RuntimeState>,
+) -> Result<(), String> {
+    if windowing::is_window_visible(&app, Page::Popup) {
+        runtime.answer_pending(Page::Popup, json!({ "type": "cancel" }));
+        windowing::hide_window(&app, Page::Popup);
+        return Ok(());
+    }
+    open_popup(app, settings_state, runtime).await
+}
+
+pub async fn retake_image_for_ask(app: AppHandle, settings_state: &AppState, runtime: &RuntimeState) -> serde_json::Value {
+    windowing::hide_window(&app, Page::Ask);
+    tokio::time::sleep(std::time::Duration::from_millis(220)).await;
+    let image = match tokio::task::spawn_blocking(|| native::capture_roi().map_err(|err| err.to_string())).await {
+        Ok(Ok(image)) => image,
+        Ok(Err(err)) => {
+            let snapshot = settings_state.snapshot();
+            let _ = windowing::show_page(
+                &app,
+                Page::Ask,
+                &snapshot.settings.ui_language,
+                json!({
+                    "title": "Ask by Image",
+                    "placeholder": "Nhập câu hỏi cho hình ảnh này...",
+                    "responseModeEnabled": true,
+                    "defaultResponseMode": "chat",
+                    "contextMode": "prompt_only",
+                    "imageContextAvailable": runtime.ask_image_context().is_some(),
+                }),
+                None,
+                None,
+            );
+            return json!({ "ok": false, "error": err });
+        }
+        Err(err) => {
+            let err = err.to_string();
+            let snapshot = settings_state.snapshot();
+            let _ = windowing::show_page(
+                &app,
+                Page::Ask,
+                &snapshot.settings.ui_language,
+                json!({
+                    "title": "Ask by Image",
+                    "placeholder": "Nhập câu hỏi cho hình ảnh này...",
+                    "responseModeEnabled": true,
+                    "defaultResponseMode": "chat",
+                    "contextMode": "prompt_only",
+                    "imageContextAvailable": runtime.ask_image_context().is_some(),
+                }),
+                None,
+                None,
+            );
+            return json!({ "ok": false, "error": err });
+        }
+    };
+    runtime.set_ask_image_context(image);
+    let snapshot = settings_state.snapshot();
+    match windowing::show_page(
+        &app,
+        Page::Ask,
+        &snapshot.settings.ui_language,
+        json!({
+            "title": "Ask by Image",
+            "placeholder": "Nhập câu hỏi cho hình ảnh này...",
+            "responseModeEnabled": true,
+            "defaultResponseMode": "chat",
+            "contextMode": "prompt_only",
+            "imageContextAvailable": true,
+        }),
+        None,
+        None,
+    ) {
+        Ok(_) => json!({ "ok": true }),
+        Err(err) => json!({ "ok": false, "error": err }),
+    }
+}
+
+pub fn get_ask_image_context(runtime: &RuntimeState) -> serde_json::Value {
+    json!({
+        "ok": true,
+        "image_payload": runtime.ask_image_context(),
+    })
 }
 
 pub async fn process_action(
@@ -126,6 +247,47 @@ pub async fn process_action(
     } else {
         process_smart_action(app, settings_state, runtime, snapshot, action_id, target_window_id).await
     }
+}
+
+fn response_payload(title: &str, content: &str, source: &str) -> serde_json::Value {
+    json!({
+        "title": title,
+        "content": content,
+        "source": source,
+    })
+}
+
+fn show_response_dialog(app: &AppHandle, ui_language: &str, title: &str, content: &str, source: &str) -> Result<(), String> {
+    windowing::show_page(
+        app,
+        Page::Response,
+        ui_language,
+        response_payload(title, content, source),
+        None,
+        None,
+    )
+    .map(|_| ())
+}
+
+fn deliver_text_result(
+    app: &AppHandle,
+    snapshot: &SettingsSnapshot,
+    text: &str,
+    target_window_id: Option<&str>,
+    title: &str,
+    source: &str,
+) -> Result<(), String> {
+    if native::target_has_editable_focus(target_window_id) {
+        if native::paste_text(text, target_window_id).is_ok() {
+            return Ok(());
+        }
+    }
+
+    native::set_clipboard_text(text).map_err(|err| err.to_string())?;
+    if snapshot.settings.show_response_dialog_when_no_input {
+        show_response_dialog(app, &snapshot.settings.ui_language, title, text, source)?;
+    }
+    Ok(())
 }
 
 async fn process_smart_action(
@@ -176,7 +338,14 @@ async fn process_smart_action(
     if action.return_with_source {
         result = format!("{}{}{}", result, prompts::SOURCE_SEPARATOR, selected_text);
     }
-    native::paste_text(&result, target_window_id.as_deref()).map_err(|err| err.to_string())?;
+    deliver_text_result(
+        &app,
+        &snapshot,
+        &result,
+        target_window_id.as_deref(),
+        &action.name,
+        "Smart Action",
+    )?;
     save_history(settings_state, &selected_text, &result);
     launcher::note_translation_action(settings_state, &action.id);
     Ok(())
@@ -233,14 +402,21 @@ async fn process_ai_prompt(
             target_window_id,
         };
         runtime.set_chat_session(session);
-        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}), None)?;
+        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}), None, None)?;
         return Ok(());
     }
     let prompt = prompts::build_ai_prompt_first_turn(&brain_context(settings_state), &selected_text, &ask.prompt);
     let result = ai::call_text(&snapshot.settings, &prompt)
         .await
         .map_err(|err| err.to_string())?;
-    native::paste_text(&result, target_window_id.as_deref()).map_err(|err| err.to_string())?;
+    deliver_text_result(
+        &app,
+        &snapshot,
+        &result,
+        target_window_id.as_deref(),
+        "AI Prompt",
+        "AI Prompt",
+    )?;
     let source = if selected_text.trim().is_empty() {
         format!("[ai-prompt] {}", ask.prompt)
     } else {
@@ -257,7 +433,8 @@ async fn process_image_ask(
     snapshot: SettingsSnapshot,
     target_window_id: Option<String>,
 ) -> Result<(), String> {
-    let image = capture_image_context(&app, runtime, &snapshot).await?;
+    let image = capture_image_context().await?;
+    runtime.set_ask_image_context(image.clone());
     let ask = ask_user(
         &app,
         runtime,
@@ -268,9 +445,11 @@ async fn process_image_ask(
             "responseModeEnabled": true,
             "defaultResponseMode": "chat",
             "contextMode": "prompt_only",
+            "imageContextAvailable": true,
         }),
     )
     .await?;
+    let image = runtime.ask_image_context().unwrap_or(image);
     if ask.prompt.trim().is_empty() {
         return Ok(());
     }
@@ -287,50 +466,28 @@ async fn process_image_ask(
             target_window_id,
         };
         runtime.set_chat_session(session);
-        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}), None)?;
+        windowing::show_page(&app, Page::Chat, &snapshot.settings.ui_language, json!({}), None, None)?;
         return Ok(());
     }
     let prompt = prompts::build_image_question_prompt(&brain_context(settings_state), &ask.prompt);
     let result = ai::call_image(&snapshot.settings, &prompt, &image)
         .await
         .map_err(|err| err.to_string())?;
-    native::paste_text(&result, target_window_id.as_deref()).map_err(|err| err.to_string())?;
+    deliver_text_result(
+        &app,
+        &snapshot,
+        &result,
+        target_window_id.as_deref(),
+        "Ask by Image",
+        "Ask by Image",
+    )?;
     save_history(settings_state, &format!("[image:{}] {}", image.source, ask.prompt), &result);
     Ok(())
 }
 
-async fn capture_image_context(
-    app: &AppHandle,
-    runtime: &RuntimeState,
-    snapshot: &SettingsSnapshot,
-) -> Result<ImagePayload, String> {
-    if *runtime.skip_image_source_picker.lock().expect("skip_image_source poisoned") {
-        if let Some(clipboard_image) = native::read_clipboard_image().map_err(|err| err.to_string())? {
-            return Ok(clipboard_image);
-        }
-    }
+async fn capture_image_context() -> Result<ImagePayload, String> {
     if let Some(clipboard_image) = native::read_clipboard_image().map_err(|err| err.to_string())? {
-        let (sender, receiver) = oneshot::channel();
-        runtime.set_pending(Page::ImageSource, sender);
-        windowing::show_page(
-            app,
-            Page::ImageSource,
-            &snapshot.settings.ui_language,
-            json!({ "title": "Ask by Image" }),
-            None,
-        )?;
-        let response = receiver
-            .await
-            .map_err(|_| "User cancelled image source selection.".to_string())?;
-        windowing::hide_window(app, Page::ImageSource);
-        if response.get("do_not_ask_again").and_then(|v| v.as_bool()).unwrap_or(false) {
-            *runtime.skip_image_source_picker.lock().expect("skip_image_source poisoned") = true;
-        }
-        match response.get("source").and_then(|v| v.as_str()) {
-            Some("clipboard") => return Ok(clipboard_image),
-            Some("roi") => return native::capture_roi().map_err(|err| err.to_string()),
-            _ => return Err("User cancelled image source selection.".to_string()),
-        }
+        return Ok(clipboard_image);
     }
     native::capture_roi().map_err(|err| err.to_string())
 }
@@ -349,7 +506,7 @@ async fn ask_user(
 ) -> Result<AskResult, String> {
     let (sender, receiver) = oneshot::channel();
     runtime.set_pending(Page::Ask, sender);
-    windowing::show_page(app, Page::Ask, ui_language, payload, None)?;
+    windowing::show_page(app, Page::Ask, ui_language, payload, None, None)?;
     let response = receiver
         .await
         .map_err(|_| "User cancelled input.".to_string())?;
@@ -383,26 +540,21 @@ pub async fn bootstrap_chat(
             return chat_error("Chat session is not available.");
         }
     };
-    if !session.messages.is_empty() {
-        return chat_ok(session);
-    }
-    let initial_prompt = session.initial_user_prompt.clone().unwrap_or_default();
-    if initial_prompt.trim().is_empty() {
+    ensure_initial_user_message(&mut session);
+    if session.messages.is_empty() {
         return chat_error("Initial prompt is empty.");
     }
-    let first_prompt = if session.kind == AI_PROMPT_ID {
-        prompts::build_ai_prompt_first_turn(
-            &brain_context(settings_state),
-            session.selected_text.as_deref().unwrap_or(""),
-            &initial_prompt,
-        )
-    } else {
-        prompts::build_image_question_prompt(&brain_context(settings_state), &initial_prompt)
-    };
-    session.messages.push(ChatMessage {
-        role: "user".to_string(),
-        content: first_prompt,
-    });
+    if session.latest_reply.trim().is_empty() {
+        runtime.update_chat_session(session.clone());
+    }
+    if session
+        .messages
+        .last()
+        .map(|message| message.role == "assistant")
+        .unwrap_or(false)
+    {
+        return chat_ok(session);
+    }
     match ai::call_chat_turn(&settings_state.snapshot().settings, &session).await {
         Ok(reply) => {
             session.messages.push(ChatMessage {
@@ -415,6 +567,35 @@ pub async fn bootstrap_chat(
         }
         Err(err) => chat_error(err.to_string()),
     }
+}
+
+pub fn get_chat_state(runtime: &RuntimeState) -> ChatResponse {
+    let mut session = match runtime.chat_session() {
+        Some(session) => session,
+        None => return chat_error("Chat session is not available."),
+    };
+    if ensure_initial_user_message(&mut session) {
+        runtime.update_chat_session(session.clone());
+    }
+    chat_ok(session)
+}
+
+fn ensure_initial_user_message(session: &mut ChatSession) -> bool {
+    if !session.messages.is_empty() {
+        return false;
+    }
+    let Some(initial_prompt) = session.initial_user_prompt.as_deref() else {
+        return false;
+    };
+    let initial_prompt = initial_prompt.trim();
+    if initial_prompt.is_empty() {
+        return false;
+    }
+    session.messages.push(ChatMessage {
+        role: "user".to_string(),
+        content: initial_prompt.to_string(),
+    });
+    true
 }
 
 pub async fn send_chat_message(
@@ -433,6 +614,7 @@ pub async fn send_chat_message(
         role: "user".to_string(),
         content: prompt.trim().to_string(),
     });
+    runtime.update_chat_session(session.clone());
     match ai::call_chat_turn(&settings_state.snapshot().settings, &session).await {
         Ok(reply) => {
             session.messages.push(ChatMessage {
@@ -447,7 +629,7 @@ pub async fn send_chat_message(
     }
 }
 
-pub fn insert_latest_reply(runtime: &RuntimeState) -> serde_json::Value {
+pub fn insert_latest_reply(app: &AppHandle, settings_state: &AppState, runtime: &RuntimeState) -> serde_json::Value {
     let session = match runtime.chat_session() {
         Some(session) => session,
         None => return json!({ "ok": false, "error": "Chat session is not available." }),
@@ -455,9 +637,17 @@ pub fn insert_latest_reply(runtime: &RuntimeState) -> serde_json::Value {
     if session.latest_reply.trim().is_empty() {
         return json!({ "ok": false, "error": "No assistant reply to insert." });
     }
-    match native::paste_text(&session.latest_reply, session.target_window_id.as_deref()) {
+    let snapshot = settings_state.snapshot();
+    match deliver_text_result(
+        app,
+        &snapshot,
+        &session.latest_reply,
+        session.target_window_id.as_deref(),
+        "AI Chat",
+        "Latest Reply",
+    ) {
         Ok(()) => json!({ "ok": true }),
-        Err(err) => json!({ "ok": false, "error": err.to_string() }),
+        Err(err) => json!({ "ok": false, "error": err }),
     }
 }
 
