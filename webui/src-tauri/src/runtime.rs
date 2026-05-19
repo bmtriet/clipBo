@@ -299,7 +299,29 @@ fn response_payload(title: &str, content: &str, source: &str) -> serde_json::Val
         "title": title,
         "content": content,
         "source": source,
+        "loading": false,
     })
+}
+
+fn loading_response_payload(title: &str) -> serde_json::Value {
+    json!({
+        "title": title,
+        "content": "",
+        "source": "",
+        "loading": true,
+    })
+}
+
+fn show_loading_response(app: &AppHandle, ui_language: &str) -> Result<(), String> {
+    windowing::show_page(
+        app,
+        Page::Response,
+        ui_language,
+        loading_response_payload("clipBo"),
+        None,
+        None,
+    )
+    .map(|_| ())
 }
 
 fn show_response_dialog(app: &AppHandle, ui_language: &str, title: &str, content: &str, source: &str) -> Result<(), String> {
@@ -312,11 +334,6 @@ fn show_response_dialog(app: &AppHandle, ui_language: &str, title: &str, content
         None,
     )
     .map(|_| ())
-}
-
-fn notify_copy_result(app: &AppHandle, runtime: &RuntimeState, ui_language: &str, text: &str) {
-    runtime.store_pending_copy(text.to_string());
-    let _ = show_response_dialog(app, ui_language, "clipBo", text, "clipBo");
 }
 
 pub fn show_pending_response(app: &AppHandle, settings_state: &AppState, runtime: &RuntimeState) -> serde_json::Value {
@@ -339,25 +356,32 @@ fn show_error_dialog(app: &AppHandle, ui_language: &str, message: &str) {
 fn deliver_text_result(
     app: &AppHandle,
     snapshot: &SettingsSnapshot,
-    runtime: &RuntimeState,
+    _runtime: &RuntimeState,
     text: &str,
     target_window_id: Option<&str>,
-    title: &str,
-    source: &str,
+    had_loading_dialog: bool,
 ) -> Result<(), String> {
-    if native::target_has_editable_focus(target_window_id) {
+    if !had_loading_dialog && native::target_has_editable_focus(target_window_id) {
         if native::paste_text(text, target_window_id).is_ok() {
             return Ok(());
         }
     }
 
     native::set_clipboard_text(text).map_err(|err| err.to_string())?;
-    let _ = title;
-    let _ = source;
-    if snapshot.settings.show_response_dialog_when_no_input {
-        notify_copy_result(app, runtime, &snapshot.settings.ui_language, text);
+    if snapshot.settings.show_response_dialog_when_no_input || had_loading_dialog {
+        show_response_dialog(app, &snapshot.settings.ui_language, "clipBo", text, "clipBo")?;
     }
     Ok(())
+}
+
+fn check_should_show_loading(
+    snapshot: &SettingsSnapshot,
+    target_window_id: Option<&str>,
+) -> bool {
+    if !snapshot.settings.show_response_dialog_when_no_input {
+        return false;
+    }
+    !native::target_has_editable_focus(target_window_id)
 }
 
 async fn process_smart_action(
@@ -407,6 +431,10 @@ async fn process_smart_action(
         &action.prompt,
         &extra,
     );
+    let show_loading = check_should_show_loading(&snapshot, target_window_id.as_deref());
+    if show_loading {
+        let _ = show_loading_response(&app, &snapshot.settings.ui_language);
+    }
     let mut result = ai::call_text(&snapshot.settings, &prompt)
         .await
         .map_err(|err| err.to_string())?;
@@ -419,8 +447,7 @@ async fn process_smart_action(
         runtime,
         &result,
         target_window_id.as_deref(),
-        &action.name,
-        "Smart Action",
+        show_loading,
     )?;
     save_history(settings_state, &selected_text, &result);
     launcher::note_translation_action(settings_state, &action.id);
@@ -487,6 +514,10 @@ async fn process_ai_prompt(
         return Ok(());
     }
     let prompt = prompts::build_ai_prompt_first_turn(&brain_context(settings_state), &selected_text, &ask.prompt);
+    let show_loading = check_should_show_loading(&snapshot, target_window_id.as_deref());
+    if show_loading {
+        let _ = show_loading_response(&app, &snapshot.settings.ui_language);
+    }
     let result = ai::call_text(&snapshot.settings, &prompt)
         .await
         .map_err(|err| err.to_string())?;
@@ -496,8 +527,7 @@ async fn process_ai_prompt(
         runtime,
         &result,
         target_window_id.as_deref(),
-        "AI Prompt",
-        "AI Prompt",
+        show_loading,
     )?;
     let source = if selected_text.trim().is_empty() {
         format!("[ai-prompt] {}", ask.prompt)
@@ -552,6 +582,10 @@ async fn process_image_ask(
         return Ok(());
     }
     let prompt = prompts::build_image_question_prompt(&brain_context(settings_state), &ask.prompt);
+    let show_loading = check_should_show_loading(&snapshot, target_window_id.as_deref());
+    if show_loading {
+        let _ = show_loading_response(&app, &snapshot.settings.ui_language);
+    }
     let result = ai::call_image(&snapshot.settings, &prompt, &image)
         .await
         .map_err(|err| err.to_string())?;
@@ -561,8 +595,7 @@ async fn process_image_ask(
         runtime,
         &result,
         target_window_id.as_deref(),
-        "Ask by Image",
-        "Ask by Image",
+        show_loading,
     )?;
     save_history(settings_state, &format!("[image:{}] {}", image.source, ask.prompt), &result);
     Ok(())
@@ -729,7 +762,7 @@ pub fn insert_latest_reply(app: &AppHandle, settings_state: &AppState, runtime: 
     match native::set_clipboard_text(&session.latest_reply) {
         Ok(()) => {
             if snapshot.settings.show_response_dialog_when_no_input {
-                notify_copy_result(app, runtime, &snapshot.settings.ui_language, &session.latest_reply);
+                let _ = show_response_dialog(app, &snapshot.settings.ui_language, "clipBo", &session.latest_reply, "Latest Reply");
             }
             json!({ "ok": true })
         }
