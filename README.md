@@ -20,12 +20,7 @@
 Built with **React / Vite + Tauri / Rust**.
 
 ### Screenshots
-![ClipBo Overview](screenshots/overview.png)
-![Popup](screenshots/popup.png)
-![Settings](screenshots/settings.png)
-![Ask Prompt](screenshots/ask.png)
-![Chat](screenshots/chat.png)
-![Ask by Image](screenshots/image-source.png)
+<img src="screenshots/overview.png" alt="ClipBo Overview" width="50%" />
 
 ### Features
 - Global AI action popup
