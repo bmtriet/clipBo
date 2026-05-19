@@ -316,19 +316,7 @@ fn show_response_dialog(app: &AppHandle, ui_language: &str, title: &str, content
 
 fn notify_copy_result(app: &AppHandle, runtime: &RuntimeState, ui_language: &str, text: &str) {
     runtime.store_pending_copy(text.to_string());
-    let _ = ui_language;
-    #[cfg(target_os = "macos")]
-    {
-        let script = format!(
-            "display notification \"Copied — click clipBo dock icon to view\" with title \"clipBo\"",
-        );
-        std::thread::spawn(move || {
-            let _ = std::process::Command::new("osascript")
-                .args(["-e", &script])
-                .status();
-        });
-    }
-    let _ = app;
+    let _ = show_response_dialog(app, ui_language, "clipBo", text, "clipBo");
 }
 
 pub fn show_pending_response(app: &AppHandle, settings_state: &AppState, runtime: &RuntimeState) -> serde_json::Value {

@@ -91,12 +91,8 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let settings = app.state::<settings::AppState>();
                 let runtime = app.state::<runtime::RuntimeState>();
-                if runtime.take_pending_copy().is_some() {
-                    let _ = runtime::show_pending_response(&app, settings.inner(), runtime.inner());
-                } else {
-                    if let Err(error) = runtime::toggle_popup(app.clone(), settings, runtime).await {
-                        eprintln!("[RUNTIME] {error}");
-                    }
+                if let Err(error) = runtime::toggle_popup(app.clone(), settings, runtime).await {
+                    eprintln!("[RUNTIME] {error}");
                 }
             });
         }
