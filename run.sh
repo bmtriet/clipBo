@@ -51,5 +51,12 @@ fi
 
 check_linux_prereqs
 
+VITE_PORT=5173
+if lsof -ti:$VITE_PORT >/dev/null 2>&1; then
+  echo "Killing stale process on port $VITE_PORT..."
+  lsof -ti:$VITE_PORT | xargs kill -9 2>/dev/null
+  sleep 1
+fi
+
 echo "Starting clipBo with Tauri/Rust..."
 (cd webui && npm run tauri:dev)
