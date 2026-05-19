@@ -28,6 +28,7 @@ export function ChatPage({
   const [compositionLockedUntil, setCompositionLockedUntil] = useState(0)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [menuOpenIndex, setMenuOpenIndex] = useState<number | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -101,7 +102,7 @@ export function ChatPage({
 
     if (composing) return
 
-    if (e.key === "Enter" && e.ctrlKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       void send()
     }
@@ -131,6 +132,11 @@ export function ChatPage({
     if (!scroller) return
     scroller.scrollTop = scroller.scrollHeight
   }, [session, sending])
+
+  const imagePreviewUrl =
+    session?.kind === "image_ask" && session.image_payload?.image_base64
+      ? `data:${session.image_payload?.mime_type || "image/png"};base64,${session.image_payload.image_base64}`
+      : ""
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 font-sans text-slate-900">
@@ -212,7 +218,19 @@ export function ChatPage({
                     <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                  <div className="space-y-2">
+                    {session?.kind === "image_ask" && index === 0 && imagePreviewUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewOpen(true)}
+                        className="block overflow-hidden rounded-md border border-white/40 bg-white/10 transition hover:bg-white/20"
+                        title="Preview image"
+                      >
+                        <img src={imagePreviewUrl} alt="Uploaded context" className="h-24 w-auto max-w-44 object-cover" />
+                      </button>
+                    ) : null}
+                    <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                  </div>
                 )}
               </div>
             ))}
@@ -281,6 +299,14 @@ export function ChatPage({
           </div>
         </div>
       </div>
+
+      {previewOpen && imagePreviewUrl ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4" onClick={() => setPreviewOpen(false)}>
+          <div className="max-h-[90vh] max-w-[90vw] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <img src={imagePreviewUrl} alt="Image preview" className="h-auto w-auto max-h-[90vh] max-w-[90vw] rounded-md" />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -77,6 +77,7 @@ export type ChatSession = {
   image_payload?: {
     source?: string
     mime_type?: string
+    image_base64?: string
     size?: { width: number; height: number }
     region?: { left: number; top: number; right: number; bottom: number }
   }
