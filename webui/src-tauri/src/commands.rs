@@ -160,6 +160,15 @@ pub fn close_response(app: AppHandle) {
 }
 
 #[tauri::command]
+pub fn show_pending_response(
+    app: AppHandle,
+    settings: State<'_, AppState>,
+    runtime_state: State<'_, RuntimeState>,
+) -> serde_json::Value {
+    runtime::show_pending_response(&app, settings.inner(), runtime_state.inner())
+}
+
+#[tauri::command]
 pub fn copy_response_text(text: String) -> serde_json::Value {
     match crate::native::set_clipboard_text(&text) {
         Ok(()) => json!({ "ok": true }),

@@ -32,7 +32,7 @@ pub fn run() {
                             tauri::async_runtime::spawn(async move {
                                 let settings = app.state::<settings::AppState>();
                                 let runtime = app.state::<runtime::RuntimeState>();
-                                if let Err(error) = runtime::open_popup(app.clone(), settings, runtime).await {
+                                if let Err(error) = runtime::toggle_popup(app.clone(), settings, runtime).await {
                                     eprintln!("[RUNTIME] {error}");
                                 }
                             });
@@ -48,7 +48,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     let settings = app.state::<settings::AppState>();
                     let runtime = app.state::<runtime::RuntimeState>();
-                    if let Err(error) = runtime::open_popup(app.clone(), settings, runtime).await {
+                    if let Err(error) = runtime::toggle_popup(app.clone(), settings, runtime).await {
                         eprintln!("[RUNTIME] {error}");
                     }
                 });
@@ -77,6 +77,7 @@ pub fn run() {
             commands::close_chat,
             commands::close_response,
             commands::copy_response_text,
+            commands::show_pending_response,
             commands::platform_summary,
         ]);
 
@@ -90,8 +91,12 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let settings = app.state::<settings::AppState>();
                 let runtime = app.state::<runtime::RuntimeState>();
-                if let Err(error) = runtime::toggle_popup_from_dock(app.clone(), settings, runtime).await {
-                    eprintln!("[RUNTIME] {error}");
+                if runtime.take_pending_copy().is_some() {
+                    let _ = runtime::show_pending_response(&app, settings.inner(), runtime.inner());
+                } else {
+                    if let Err(error) = runtime::toggle_popup(app.clone(), settings, runtime).await {
+                        eprintln!("[RUNTIME] {error}");
+                    }
                 }
             });
         }

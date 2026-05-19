@@ -45,6 +45,7 @@ pub struct RuntimeState {
     chat_session: Mutex<Option<ChatSession>>,
     ask_image_context: Mutex<Option<ImagePayload>>,
     popup_selected_text: Mutex<Option<String>>,
+    pending_copy_text: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +107,17 @@ impl RuntimeState {
             .take()
     }
 
+    pub fn store_pending_copy(&self, text: String) {
+        *self.pending_copy_text.lock().expect("pending copy state poisoned") = Some(text);
+    }
+
+    pub fn take_pending_copy(&self) -> Option<String> {
+        self.pending_copy_text
+            .lock()
+            .expect("pending copy state poisoned")
+            .take()
+    }
+
     fn pending_slot(&self, page: Page) -> &Mutex<Option<PendingSender>> {
         match page {
             Page::Ask => &self.ask,
@@ -140,7 +152,10 @@ pub async fn open_popup(
         Some(popup_size),
     )?;
     let response = receiver.await        .map_err(|err| {
-            let err_msg = format!("Popup was closed unexpectedly: {err}");
+            if err.to_string().contains("channel closed") {
+                return "cancelled".to_string();
+            }
+            let err_msg = format!("Popup error: {err}");
             show_error_dialog(&app, &snapshot.settings.ui_language, &err_msg);
             err.to_string()
         })?;
@@ -164,7 +179,7 @@ pub async fn open_popup(
     Ok(())
 }
 
-pub async fn toggle_popup_from_dock(
+pub async fn toggle_popup(
     app: AppHandle,
     settings_state: tauri::State<'_, AppState>,
     runtime: tauri::State<'_, RuntimeState>,
@@ -175,6 +190,14 @@ pub async fn toggle_popup_from_dock(
         return Ok(());
     }
     open_popup(app, settings_state, runtime).await
+}
+
+pub async fn toggle_popup_from_dock(
+    app: AppHandle,
+    settings_state: tauri::State<'_, AppState>,
+    runtime: tauri::State<'_, RuntimeState>,
+) -> Result<(), String> {
+    toggle_popup(app, settings_state, runtime).await
 }
 
 pub async fn retake_image_for_ask(app: AppHandle, settings_state: &AppState, runtime: &RuntimeState) -> serde_json::Value {
@@ -291,6 +314,36 @@ fn show_response_dialog(app: &AppHandle, ui_language: &str, title: &str, content
     .map(|_| ())
 }
 
+fn notify_copy_result(app: &AppHandle, runtime: &RuntimeState, ui_language: &str, text: &str) {
+    runtime.store_pending_copy(text.to_string());
+    let _ = ui_language;
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display notification \"Copied — click clipBo dock icon to view\" with title \"clipBo\"",
+        );
+        std::thread::spawn(move || {
+            let _ = std::process::Command::new("osascript")
+                .args(["-e", &script])
+                .status();
+        });
+    }
+    let _ = app;
+}
+
+pub fn show_pending_response(app: &AppHandle, settings_state: &AppState, runtime: &RuntimeState) -> serde_json::Value {
+    let snapshot = settings_state.snapshot();
+    match runtime.take_pending_copy() {
+        Some(text) => {
+            match show_response_dialog(app, &snapshot.settings.ui_language, "clipBo", &text, "clipBo") {
+                Ok(()) => json!({ "ok": true }),
+                Err(err) => json!({ "ok": false, "error": err }),
+            }
+        }
+        None => json!({ "ok": false, "error": "No pending response." }),
+    }
+}
+
 fn show_error_dialog(app: &AppHandle, ui_language: &str, message: &str) {
     let _ = show_response_dialog(app, ui_language, "Error", message, "clipBo");
 }
@@ -298,6 +351,7 @@ fn show_error_dialog(app: &AppHandle, ui_language: &str, message: &str) {
 fn deliver_text_result(
     app: &AppHandle,
     snapshot: &SettingsSnapshot,
+    runtime: &RuntimeState,
     text: &str,
     target_window_id: Option<&str>,
     title: &str,
@@ -310,8 +364,10 @@ fn deliver_text_result(
     }
 
     native::set_clipboard_text(text).map_err(|err| err.to_string())?;
+    let _ = title;
+    let _ = source;
     if snapshot.settings.show_response_dialog_when_no_input {
-        show_response_dialog(app, &snapshot.settings.ui_language, title, text, source)?;
+        notify_copy_result(app, runtime, &snapshot.settings.ui_language, text);
     }
     Ok(())
 }
@@ -372,6 +428,7 @@ async fn process_smart_action(
     deliver_text_result(
         &app,
         &snapshot,
+        runtime,
         &result,
         target_window_id.as_deref(),
         &action.name,
@@ -448,6 +505,7 @@ async fn process_ai_prompt(
     deliver_text_result(
         &app,
         &snapshot,
+        runtime,
         &result,
         target_window_id.as_deref(),
         "AI Prompt",
@@ -512,6 +570,7 @@ async fn process_image_ask(
     deliver_text_result(
         &app,
         &snapshot,
+        runtime,
         &result,
         target_window_id.as_deref(),
         "Ask by Image",
@@ -682,7 +741,7 @@ pub fn insert_latest_reply(app: &AppHandle, settings_state: &AppState, runtime: 
     match native::set_clipboard_text(&session.latest_reply) {
         Ok(()) => {
             if snapshot.settings.show_response_dialog_when_no_input {
-                let _ = show_response_dialog(app, &snapshot.settings.ui_language, "AI Chat", &session.latest_reply, "Latest Reply");
+                notify_copy_result(app, runtime, &snapshot.settings.ui_language, &session.latest_reply);
             }
             json!({ "ok": true })
         }
