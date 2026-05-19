@@ -16,6 +16,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
   const popupItems = useMemo(() => sections.flatMap((section) => section.items), [sections])
   const [provider, setProvider] = useState("gemini")
   const [providerModel, setProviderModel] = useState("")
+  const [popupHotkey, setPopupHotkey] = useState("")
   const [showAbout, setShowAbout] = useState(false)
   const providerIcon = provider === "openai" ? openaiIcon : provider === "ollama" ? ollamaIcon : geminiIcon
 
@@ -45,6 +46,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
       setProvider(nextProvider)
       const settings = snapshot?.settings
       if (!settings) return
+      setPopupHotkey(settings.HOTKEY_POPUP || "")
       const model =
         nextProvider === "openai"
           ? settings.OPENAI_MODEL
@@ -147,7 +149,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
   return (
     <div className="h-screen bg-white font-sans text-slate-900">
       <div className="flex h-full flex-col overflow-hidden border border-slate-200/80 bg-white">
-        <div className="desktop-drag-region flex cursor-move items-center border-b border-slate-200/80 px-3 py-3">
+        <div data-tauri-drag-region className="desktop-drag-region select-none flex cursor-move items-center border-b border-slate-200/80 px-3 py-3">
           <img src={appIcon} alt="clipBo" className="mr-2.5 h-10 w-10 shrink-0 object-contain" />
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-xl font-bold text-slate-800">{t.popupTitle}</h2>
@@ -156,6 +158,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
           <button
             aria-label={t.about}
             onClick={() => setShowAbout(true)}
+            data-tauri-drag-region={false}
             className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-teal-600"
           >
             <CircleHelp className="h-[18px] w-[18px]" />
@@ -163,6 +166,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
           <button
             aria-label={t.openSettings}
             onClick={() => window.desktopApi?.openSettings()}
+            data-tauri-drag-region={false}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-teal-600"
           >
             <Settings className="h-[18px] w-[18px]" />
@@ -170,6 +174,7 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
           <button
             aria-label={t.closePopup}
             onClick={() => window.desktopApi?.cancelPopup()}
+            data-tauri-drag-region={false}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
           >
             <X className="h-[18px] w-[18px]" />
@@ -182,12 +187,20 @@ export function PopupPage({ t, uiLang, changeLang }: { t: EnTranslations; uiLang
 
         <div className="border-t border-slate-200/80 bg-white px-4 py-2">
           <div className="flex items-center justify-between gap-3">
-            <div
-              title={providerModel}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
-            >
-              <img src={providerIcon} alt={provider} className="h-3.5 w-3.5 object-contain" />
-              {provider}
+            <div className="flex items-center gap-2">
+              <div
+                title={providerModel}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+              >
+                <img src={providerIcon} alt={provider} className="h-3.5 w-3.5 object-contain" />
+                {provider}
+              </div>
+              <div
+                title="Active popup hotkey"
+                className="inline-flex items-center rounded-md border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-700"
+              >
+                {popupHotkey || "—"}
+              </div>
             </div>
             <LanguagePills currentLang={uiLang} onChange={changeLang} />
           </div>

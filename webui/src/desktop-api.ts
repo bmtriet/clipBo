@@ -1,16 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import type { SettingsSnapshot, SaveSnapshotResponse, ChatApiResponse, DesktopApi } from "./types"
 
-declare global {
-  interface Window {
-    __TAURI_INTERNALS__?: unknown
-  }
-}
-
-function isTauriRuntime() {
-  return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__)
-}
-
 function createTauriApi(): DesktopApi {
   return {
     submitAsk: (prompt, responseMode) => invoke("submit_ask", { prompt, responseMode }),
@@ -34,7 +24,7 @@ function createTauriApi(): DesktopApi {
 
 export function installDesktopApiBridge() {
   const desktopWindow = window as Window & { desktopApi?: DesktopApi }
-  if (!isTauriRuntime() || desktopWindow.desktopApi) {
+  if (desktopWindow.desktopApi) {
     return
   }
 

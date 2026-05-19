@@ -10,7 +10,7 @@ mod settings;
 mod windowing;
 
 use tauri::Manager;
-use tauri_plugin_global_shortcut::ShortcutState;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,9 +21,6 @@ pub fn run() {
         .manage(runtime::RuntimeState::default())
         .setup(|app| {
             let snapshot = app.state::<settings::AppState>().snapshot();
-            if cfg!(target_os = "macos") && !native::ensure_accessibility_permission(false) {
-                native::open_accessibility_settings();
-            }
             let shortcut = normalize_shortcut(&snapshot.settings.hotkey_popup);
             let handle = app.handle().clone();
             app.handle().plugin(
@@ -45,6 +42,16 @@ pub fn run() {
             )?;
             if let Some(window) = handle.get_webview_window("main") {
                 let _ = window.hide();
+            }
+            {
+                let app = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let settings = app.state::<settings::AppState>();
+                    let runtime = app.state::<runtime::RuntimeState>();
+                    if let Err(error) = runtime::open_popup(app.clone(), settings, runtime).await {
+                        eprintln!("[RUNTIME] {error}");
+                    }
+                });
             }
             println!("[HOTKEY] Listener ready: {}", shortcut);
             Ok(())
@@ -71,7 +78,7 @@ pub fn run() {
         .expect("error while running clipBo");
 }
 
-fn normalize_shortcut(value: &str) -> String {
+pub fn normalize_shortcut(value: &str) -> String {
     let mut normalized = value
         .trim()
         .replace("<ctrl>+", "CommandOrControl+")
@@ -93,4 +100,16 @@ fn normalize_shortcut(value: &str) -> String {
         };
     }
     normalized
+}
+
+pub fn rebind_popup_hotkey(app: &tauri::AppHandle, hotkey_popup: &str) -> Result<String, String> {
+    let shortcut = normalize_shortcut(hotkey_popup);
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|err| err.to_string())?;
+    app.global_shortcut()
+        .register(shortcut.as_str())
+        .map_err(|err| err.to_string())?;
+    println!("[HOTKEY] Rebound: {}", shortcut);
+    Ok(shortcut)
 }

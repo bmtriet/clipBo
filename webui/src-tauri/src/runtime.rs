@@ -208,7 +208,7 @@ async fn process_ai_prompt(
             "title": "AI Prompt",
             "placeholder": placeholder,
             "responseModeEnabled": true,
-            "defaultResponseMode": "paste",
+            "defaultResponseMode": "chat",
             "contextMode": context_mode,
         }),
     )
@@ -266,7 +266,7 @@ async fn process_image_ask(
             "title": "Ask by Image",
             "placeholder": "Nhập câu hỏi cho hình ảnh này...",
             "responseModeEnabled": true,
-            "defaultResponseMode": "paste",
+            "defaultResponseMode": "chat",
             "contextMode": "prompt_only",
         }),
     )

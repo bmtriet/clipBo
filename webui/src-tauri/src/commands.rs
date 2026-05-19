@@ -14,16 +14,24 @@ pub fn get_settings_snapshot(state: State<'_, AppState>) -> SettingsSnapshot {
 }
 
 #[tauri::command]
-pub fn save_settings_snapshot(state: State<'_, AppState>, payload: String) -> SaveSnapshotResponse {
+pub fn save_settings_snapshot(app: AppHandle, state: State<'_, AppState>, payload: String) -> SaveSnapshotResponse {
     match serde_json::from_str::<SettingsSnapshot>(&payload)
         .map_err(|err| err.to_string())
         .and_then(|snapshot| state.save_snapshot(snapshot).map_err(|err| err.to_string()))
     {
-        Ok(snapshot) => SaveSnapshotResponse {
-            ok: true,
-            error: None,
-            smart_actions: Some(snapshot.smart_actions),
-            builtin_actions: Some(snapshot.builtin_actions),
+        Ok(snapshot) => match crate::rebind_popup_hotkey(&app, &snapshot.settings.hotkey_popup) {
+            Ok(_) => SaveSnapshotResponse {
+                ok: true,
+                error: None,
+                smart_actions: Some(snapshot.smart_actions),
+                builtin_actions: Some(snapshot.builtin_actions),
+            },
+            Err(error) => SaveSnapshotResponse {
+                ok: false,
+                error: Some(format!("Saved, but failed to apply popup hotkey: {error}")),
+                smart_actions: Some(snapshot.smart_actions),
+                builtin_actions: Some(snapshot.builtin_actions),
+            },
         },
         Err(error) => SaveSnapshotResponse {
             ok: false,
@@ -71,10 +79,8 @@ pub fn cancel_popup(app: AppHandle, state: State<'_, RuntimeState>) {
 }
 
 #[tauri::command]
-pub fn open_settings(app: AppHandle, settings: State<'_, AppState>, state: State<'_, RuntimeState>) {
+pub fn open_settings(_app: AppHandle, _settings: State<'_, AppState>, state: State<'_, RuntimeState>) {
     state.answer_pending(Page::Popup, json!({ "type": "open_settings" }));
-    let lang = settings.snapshot().settings.ui_language;
-    let _ = windowing::open_settings_page(&app, &lang);
 }
 
 #[tauri::command]

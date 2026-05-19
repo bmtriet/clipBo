@@ -44,6 +44,7 @@ export function SettingsPage({
 }) {
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [capturingPopupHotkey, setCapturingPopupHotkey] = useState(false)
   const [editingAction, setEditingAction] = useState<SmartAction | null>(null)
   const vietnameseMarksActionId = "add-vietnamese-marks"
 
@@ -131,6 +132,20 @@ export function SettingsPage({
     setEditingAction(null)
   }
 
+  const formatPopupHotkeyFromEvent = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const key = event.key
+    if (key === "Control" || key === "Meta" || key === "Alt" || key === "Shift") {
+      return ""
+    }
+    const parts: string[] = []
+    if (event.ctrlKey || event.metaKey) parts.push("<ctrl>")
+    if (event.altKey) parts.push("<alt>")
+    if (event.shiftKey) parts.push("<shift>")
+    const normalizedKey = key.length === 1 ? key.toLowerCase() : key
+    if (!normalizedKey) return ""
+    return `${parts.join("+")}${parts.length ? "+" : ""}${normalizedKey}`
+  }
+
   const moveAction = (id: string, direction: -1 | 1) => {
     onActionsChange((prev) => {
       const visibleActions = prev.filter((action) => action.id !== vietnameseMarksActionId)
@@ -197,7 +212,24 @@ export function SettingsPage({
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{t.popupHotkey}</label>
-                <InputField value={settings.HOTKEY_POPUP} onChange={(e) => updateField("HOTKEY_POPUP", e.target.value)} />
+                <InputField
+                  value={settings.HOTKEY_POPUP}
+                  readOnly
+                  onFocus={() => setCapturingPopupHotkey(true)}
+                  onBlur={() => setCapturingPopupHotkey(false)}
+                  onKeyDown={(e) => {
+                    e.preventDefault()
+                    const next = formatPopupHotkeyFromEvent(e)
+                    if (!next) return
+                    updateField("HOTKEY_POPUP", next)
+                    setCapturingPopupHotkey(false)
+                    ;(e.currentTarget as HTMLInputElement).blur()
+                  }}
+                  placeholder={capturingPopupHotkey ? "Press shortcut..." : ""}
+                />
+                <div className="mt-1 text-xs text-slate-500">
+                  {capturingPopupHotkey ? "Đang chờ bấm tổ hợp phím..." : "Bấm vào ô rồi nhấn tổ hợp phím để ghi nhận."}
+                </div>
               </div>
             </div>
             <ToggleField checked={settings.DEBUG} onChange={(value) => updateField("DEBUG", value)} label={t.debug} />

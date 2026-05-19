@@ -48,7 +48,7 @@ export function AskPage({
 
     if (composing) return
 
-    if (e.key === "Enter" && e.ctrlKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       submit()
     }
